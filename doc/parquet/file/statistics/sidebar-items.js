@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Statistics"],"fn":["from_thrift","to_thrift"],"struct":["ValueStatistics"],"type":["TypedStatistics"]};

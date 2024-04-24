@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["binary_operator_data_type","coerce_types","comparison_coercion","like_coercion","regex_coercion"]};

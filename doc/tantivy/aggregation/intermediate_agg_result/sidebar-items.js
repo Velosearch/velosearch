@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["IntermediateAggregationResult","IntermediateBucketResult","IntermediateMetricResult"],"struct":["IntermediateAggregationResults","IntermediateHistogramBucketEntry","IntermediateRangeBucketEntry","IntermediateRangeBucketResult","IntermediateTermBucketEntry","IntermediateTermBucketResult"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["FileRange","ListingOptions","ListingTable","ListingTableConfig","ListingTableUrl","PartitionedFile"],"type":["PartitionedFileStream"]};

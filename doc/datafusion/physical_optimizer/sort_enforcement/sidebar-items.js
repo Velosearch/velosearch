@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["can_skip_sort"],"struct":["ColumnInfo","EnforceSorting"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["VERSION"],"enum":["FuncOrDataId","Init","Linkage","ModuleError","ModuleExtName"],"fn":["default_libcall_names"],"struct":["DataDeclaration","DataDescription","DataId","FuncId","FunctionDeclaration","ModuleDeclarations","ModuleReloc","TrapSite"],"trait":["Module"],"type":["ModuleResult"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["concat_batches"],"struct":["CoalesceBatchesExec"]};

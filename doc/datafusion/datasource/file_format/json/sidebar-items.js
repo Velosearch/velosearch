@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["DEFAULT_JSON_EXTENSION"],"struct":["JsonFormat"]};

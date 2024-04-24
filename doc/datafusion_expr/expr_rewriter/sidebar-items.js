@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["RewriteRecursion"],"fn":["coerce_plan_expr_for_schema","normalize_col","normalize_col_with_schemas","normalize_cols","replace_col","rewrite_expr","rewrite_sort_cols_by_aggs","unnormalize_col","unnormalize_cols"],"trait":["ExprRewritable","ExprRewriter"]};

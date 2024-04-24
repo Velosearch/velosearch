@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["decode_footer","decode_metadata","parse_metadata"]};

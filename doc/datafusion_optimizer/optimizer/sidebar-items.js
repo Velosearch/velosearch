@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["ApplyOrder"],"struct":["Optimizer","OptimizerContext"],"trait":["OptimizerConfig","OptimizerRule"]};

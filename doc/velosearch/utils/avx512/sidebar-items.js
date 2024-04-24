@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["bitwise_and","bitwise_and_batch","bitwise_or","bitwise_or_batch"],"union":["U64x8"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["AverageAggregation","IntermediateAverage","IntermediateStats","SingleMetricResult","Stats","StatsAggregation"]};

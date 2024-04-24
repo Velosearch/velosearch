@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["eliminate_outer"],"struct":["EliminateOuterJoin"]};

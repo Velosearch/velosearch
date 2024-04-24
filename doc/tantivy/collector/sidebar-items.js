@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["Count","DocSetCollector","FacetCollector","FacetCounts","FilterCollector","FruitHandle","HistogramCollector","MultiCollector","MultiFruit","TopDocs"],"trait":["Collector","CustomScorer","CustomSegmentScorer","Fruit","ScoreSegmentTweaker","ScoreTweaker","SegmentCollector"]};

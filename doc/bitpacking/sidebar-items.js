@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["BitPacker4x"],"trait":["BitPacker"]};

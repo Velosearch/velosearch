@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["provider_as_source","source_as_provider"],"struct":["DefaultTableSource"]};

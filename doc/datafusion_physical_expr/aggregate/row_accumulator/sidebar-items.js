@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["is_row_accumulator_support_dtype"],"trait":["RowAccumulator"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Error"],"mod":["automaton","map","raw"],"struct":["Chain","Map","MapBuilder","Regex"],"trait":["Automaton","IntoStreamer","Streamer"],"type":["Result"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["print_file_metadata","print_parquet_metadata","print_schema"]};

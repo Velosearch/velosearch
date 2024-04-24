@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["AggregationResult","BucketEntries","BucketResult","MetricResult"],"struct":["AggregationResults","BucketEntry","RangeBucketEntry"]};

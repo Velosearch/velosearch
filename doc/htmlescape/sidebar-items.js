@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["DecodeErrKind"],"fn":["decode_html","decode_html_rw","encode_attribute","encode_attribute_w","encode_minimal","encode_minimal_w"],"struct":["DecodeErr"]};

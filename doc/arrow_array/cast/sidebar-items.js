@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["as_boolean_array","as_decimal_array","as_dictionary_array","as_generic_binary_array","as_generic_list_array","as_large_list_array","as_largestring_array","as_list_array","as_map_array","as_null_array","as_primitive_array","as_string_array","as_struct_array","as_union_array","downcast_array"]};

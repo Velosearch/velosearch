@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"mod":["reader","writer"],"struct":["RawDecoder","RawReader","RawReaderBuilder"],"trait":["JsonSerializable"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["multiway_union"],"mod":["assume","one_or_less_iterator","sorted_iterator","sorted_pair_iterator"],"trait":["SortedIterator","SortedPairIterator"]};

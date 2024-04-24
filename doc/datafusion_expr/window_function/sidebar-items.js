@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["BuiltInWindowFunction","WindowFunction"],"fn":["find_df_window_func","return_type","signature","signature_for_built_in"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["regexp_is_match_utf8","regexp_is_match_utf8_scalar","regexp_match"]};

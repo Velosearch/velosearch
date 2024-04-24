@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["read_columns_indexes","read_pages_locations"]};

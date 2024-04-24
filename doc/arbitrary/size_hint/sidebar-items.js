@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["and","and_all","or","or_all","recursion_guard"]};

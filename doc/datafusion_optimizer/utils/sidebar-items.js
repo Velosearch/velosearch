@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["add_filter","conjunction","disjunction","exprs_to_join_cols","find_join_exprs","merge_schema","only_or_err","optimize_children","rewrite_preserving_name","split_binary","split_binary_owned","split_conjunction","split_conjunction_owned","unalias","verify_not_disjunction"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["compress","compress_into","compress_prepend_size","decompress","decompress_into","decompress_size_prepended"],"mod":["block"]};

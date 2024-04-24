@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["AssumeSortedByKey","FilterMapValues","Join","Keys","LeftJoin","MapValues","OuterJoin","RightJoin"],"trait":["SortedByKey"]};

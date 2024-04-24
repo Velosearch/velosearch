@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"mod":["sort","sort_preserving_merge"],"struct":["RowIndex","SortKeyCursor"]};

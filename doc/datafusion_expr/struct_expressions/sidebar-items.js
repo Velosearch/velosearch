@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"static":["SUPPORTED_STRUCT_TYPES"]};

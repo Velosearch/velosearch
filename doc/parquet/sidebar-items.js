@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"mod":["arrow","basic","bloom_filter","column","data_type","errors","file","format","record","schema"]};

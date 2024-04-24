@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["string_to_time_nanoseconds","string_to_timestamp_nanos"],"trait":["Parser"]};

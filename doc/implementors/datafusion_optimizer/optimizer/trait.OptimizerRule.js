@@ -1,4 +1,0 @@
-(function() {var implementors = {
-"datafusion_optimizer":[],
-"velosearch":[["impl <a class=\"trait\" href=\"datafusion_optimizer/optimizer/trait.OptimizerRule.html\" title=\"trait datafusion_optimizer::optimizer::OptimizerRule\">OptimizerRule</a> for <a class=\"struct\" href=\"velosearch/optimizer/struct.RewriteBooleanPredicate.html\" title=\"struct velosearch::optimizer::RewriteBooleanPredicate\">RewriteBooleanPredicate</a>"],["impl <a class=\"trait\" href=\"datafusion_optimizer/optimizer/trait.OptimizerRule.html\" title=\"trait datafusion_optimizer::optimizer::OptimizerRule\">OptimizerRule</a> for <a class=\"struct\" href=\"velosearch/optimizer/struct.PushDownProjection.html\" title=\"struct velosearch::optimizer::PushDownProjection\">PushDownProjection</a>"]]
-};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

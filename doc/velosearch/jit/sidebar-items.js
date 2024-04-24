@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["jit_short_circuit"],"mod":["api","ast","compile","jit"],"struct":["AOT_PRIMITIVES"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["FileType"],"struct":["FileCompressionType"],"trait":["GetExt"]};

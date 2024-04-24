@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["BOOL","I64","NIL","PTR","PTR_SIZE","R32","R64","U16","U8"],"enum":["BinaryExpr","Expr","Literal","Predicate","Stmt","TypedLit"],"struct":["Boolean","BooleanExpr","JITType"]};

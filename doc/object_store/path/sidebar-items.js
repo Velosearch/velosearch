@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["DELIMITER","DELIMITER_BYTE"],"enum":["Error"],"struct":["InvalidPart","Path","PathPart"]};

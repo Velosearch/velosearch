@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Aggregation","BucketAggregationType","MetricAggregation"],"fn":["get_fast_field_names","get_term_dict_field_names"],"struct":["BucketAggregation","RangeAggregation"],"type":["Aggregations"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["ColumnChunkMetaData","ColumnChunkMetaDataBuilder","ColumnIndexBuilder","FileMetaData","OffsetIndexBuilder","ParquetMetaData","RowGroupMetaData","RowGroupMetaDataBuilder"],"type":["FileMetaDataPtr","KeyValue","ParquetColumnIndex","ParquetOffsetIndex","RowGroupMetaDataPtr"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Chunk","PhysicalPredicate","Primitives","TempChunk"],"fn":["freqs_filter"],"struct":["BooleanEvalExpr","SubPredicate"]};

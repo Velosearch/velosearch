@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["LogMergePolicy","MergeCandidate","NoMergePolicy"],"trait":["MergePolicy"],"type":["DefaultMergePolicy"]};

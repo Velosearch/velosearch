@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["DEFAULT_PARQUET_EXTENSION"],"fn":["fetch_parquet_metadata"],"struct":["ParquetFormat"]};

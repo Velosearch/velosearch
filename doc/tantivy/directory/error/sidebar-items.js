@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["DeleteError","Incompatibility","LockError","OpenDirectoryError","OpenReadError","OpenWriteError"]};

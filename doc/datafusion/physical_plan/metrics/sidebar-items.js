@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["MetricValue"],"struct":["BaselineMetrics","CompositeMetricsSet","Count","ExecutionPlanMetricsSet","Gauge","Label","MemTrackingMetrics","Metric","MetricBuilder","MetricsSet","ScopedTimerGuard","Time","Timestamp"],"trait":["RecordOutput"]};

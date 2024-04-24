@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["Chain","Difference","Intersection","Keys","Map","MapBuilder","OpBuilder","Stream","StreamBuilder","StreamWithState","StreamWithStateBuilder","SymmetricDifference","Union","Values"]};

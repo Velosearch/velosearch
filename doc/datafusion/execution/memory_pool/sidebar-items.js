@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["human_readable_size"],"mod":["proxy"],"struct":["FairSpillPool","GreedyMemoryPool","MemoryConsumer","MemoryReservation","UnboundedMemoryPool"],"trait":["MemoryPool"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["pretty_format_batches","pretty_format_columns","print_batches","print_columns"]};

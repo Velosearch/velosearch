@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"mod":["iso8601","rfc2822","rfc3339","timestamp"]};

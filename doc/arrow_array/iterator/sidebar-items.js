@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["ArrayIter"],"type":["BooleanIter","FixedSizeBinaryIter","GenericBinaryIter","GenericListArrayIter","GenericStringIter","PrimitiveIter"]};

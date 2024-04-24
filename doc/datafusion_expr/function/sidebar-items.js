@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["return_type","signature"],"type":["AccumulatorFunctionImplementation","ReturnTypeFunction","ScalarFunctionImplementation","StateTypeFunction"]};

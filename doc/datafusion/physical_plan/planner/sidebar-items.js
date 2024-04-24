@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["create_aggregate_expr","create_aggregate_expr_with_name","create_physical_sort_expr","create_window_expr","create_window_expr_with_name","is_window_valid"],"struct":["DefaultPhysicalPlanner"],"trait":["ExtensionPlanner","PhysicalPlanner"]};

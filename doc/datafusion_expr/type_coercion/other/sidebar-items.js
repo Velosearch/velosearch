@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["get_coerce_type_for_case_when","get_coerce_type_for_list"]};

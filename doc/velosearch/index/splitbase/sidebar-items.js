@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["register_table"],"struct":["SplitConstruct","SplitHandler","SplitO1"]};

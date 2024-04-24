@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["aggr_test_schema","aggr_test_schema_with_missing_col","arrow_test_data","get_data_dir","parquet_test_data","scan_empty","scan_empty_with_partitions"],"struct":["TestTableFactory","TestTableProvider"]};

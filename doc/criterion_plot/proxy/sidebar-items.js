@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["Font","Label","Output","Title"]};

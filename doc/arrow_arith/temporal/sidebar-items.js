@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["day","day_dyn","doy","doy_dyn","hour","hour_dyn","minute","minute_dyn","month","month_dyn","nanosecond","nanosecond_dyn","num_days_from_monday","num_days_from_monday_dyn","num_days_from_sunday","num_days_from_sunday_dyn","quarter","quarter_dyn","second","second_dyn","using_chrono_tz_and_utc_naive_date_time","week","week_dyn","year","year_dyn"]};

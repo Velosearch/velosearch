@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Recursion"],"fn":["inspect_expr_pre"],"trait":["ExprVisitable","ExpressionVisitor"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Decimal"],"struct":["BoolType","ByteArray","ByteArrayType","DoubleType","FixedLenByteArray","FixedLenByteArrayType","FloatType","Int32Type","Int64Type","Int96","Int96Type"],"trait":["AsBytes","DataType","SliceAsBytes","SliceAsBytesDataType"]};

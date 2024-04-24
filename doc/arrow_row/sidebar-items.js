@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["OwnedRow","Row","RowConverter","RowParser","Rows","RowsIter","SortField"]};

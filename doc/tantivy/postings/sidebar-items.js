@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["BlockSegmentPostings","FieldSerializer","InvertedIndexSerializer","SegmentPostings","TermInfo"],"trait":["Postings"]};

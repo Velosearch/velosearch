@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["object_name_to_qualifier","object_name_to_table_reference"],"struct":["ParserOptions","PlannerContext","SqlToRel"],"trait":["ContextProvider"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["TableType"],"fn":["get_statistics_with_limit"],"mod":["datasource","default_table_source","empty","file_format","listing","listing_table_factory","memory","object_store","streaming","view"]};

@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["bench_write_batch","write_batch_unchecked","write_row"],"struct":["RowWriter"]};

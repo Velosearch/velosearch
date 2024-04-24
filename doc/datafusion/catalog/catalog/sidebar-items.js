@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["MemoryCatalogList","MemoryCatalogProvider"],"trait":["CatalogList","CatalogProvider"]};

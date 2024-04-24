@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["WindowFrameBound","WindowFrameUnits"],"fn":["convert_frame_bound_to_scalar_value"],"struct":["WindowFrame"]};

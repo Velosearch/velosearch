@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["FileSource","ReadOptions","ReadOptionsBuilder","SerializedFileReader","SerializedPageReader","SerializedRowGroupReader"],"type":["ReadGroupPredicate"]};

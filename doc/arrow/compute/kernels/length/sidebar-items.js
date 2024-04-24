@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["bit_length","length"]};

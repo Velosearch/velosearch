@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["NUM_ITER"],"fn":["bytes_to_chunk","main","vec_to_bytes"]};

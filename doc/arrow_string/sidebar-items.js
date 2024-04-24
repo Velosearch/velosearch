@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"mod":["concat_elements","length","like","regexp","substring"]};

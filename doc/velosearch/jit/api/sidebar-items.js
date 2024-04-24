@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"struct":["Assembler","AssemblerState","CodeBlock","FunctionBuilder","GeneratedFunction"]};

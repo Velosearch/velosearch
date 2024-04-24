@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["window_expr_common_partition_keys"]};

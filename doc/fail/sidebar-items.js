@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["cfg","cfg_callback","has_failpoints","list","remove"],"macro":["fail_point"],"struct":["FailGuard","FailScenario"]};

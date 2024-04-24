@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["ALIGNMENT"],"fn":["allocate_aligned","allocate_aligned_zeroed","free_aligned","reallocate"],"trait":["Allocation"]};

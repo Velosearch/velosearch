@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["fetch_parquet_metadata"],"struct":["ParquetRecordBatchStream"],"trait":["AsyncFileReader"],"type":["ParquetRecordBatchStreamBuilder"]};
