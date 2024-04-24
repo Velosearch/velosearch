@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["boolean_eval","count_udf","short_circuit_primitives"]};

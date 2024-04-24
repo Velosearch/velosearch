@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["register_table"],"struct":["BaseHandler"],"trait":["HandlerT"]};
