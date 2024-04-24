@@ -1,0 +1,492 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Rust
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.head_ref || github.sha }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+on:
+  push:
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".github/**"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".github/**"
+  # manual trigger
+  # https://docs.github.com/en/actions/managing-workflow-runs/manually-running-a-workflow
+  workflow_dispatch:
+
+jobs:
+  # Check crate compiles
+  linux-build-lib:
+    name: cargo check
+    runs-on: self-hosted
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          # these represent dependencies downloaded by cargo
+          # and thus do not depend on the OS, arch nor rust version.
+          path: /github/home/.cargo
+          key: cargo-cache-
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+
+      - name: Check workspace without default features
+        run: cargo check --no-default-features -p datafusion
+
+      - name: Check workspace in debug mode
+        run: cargo check
+
+      # Note: this does not include dictionary_expressions to reduce codegen
+      - name: Check workspace with all features
+        run: cargo check --workspace --benches --features avro,jit,scheduler,json
+
+      - name: Check Cargo.lock for datafusion-cli
+        run: |
+          # If this test fails, try running `cargo update` in the `datafusion-cli` directory
+          # and check in the updated Cargo.lock file.
+          cargo check --manifest-path datafusion-cli/Cargo.toml --locked
+
+  # test the crate
+  linux-test:
+    name: cargo test (amd64)
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: /github/home/.cargo
+          # this key equals the ones on `linux-build-lib` for re-use
+          key: cargo-cache-
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      - name: Run tests (excluding doctests)
+        run: cargo test --lib --tests --bins --features avro,jit,scheduler,json,dictionary_expressions
+      - name: Verify Working Directory Clean
+        run: git diff --exit-code
+
+  linux-test-example:
+    name: cargo examples (amd64)
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      - name: Run examples
+        run: |
+          # test datafusion-sql examples
+          cargo run --example sql
+          # test datafusion-examples
+          cargo run --example avro_sql --features=datafusion/avro
+          cargo run --example csv_sql
+          cargo run --example custom_datasource
+          cargo run --example dataframe
+          cargo run --example dataframe_in_memory
+          cargo run --example deserialize_to_struct
+          cargo run --example expr_api
+          cargo run --example parquet_sql
+          cargo run --example parquet_sql_multiple_files
+          cargo run --example memtable
+          cargo run --example rewrite_expr
+          cargo run --example simple_udf
+          cargo run --example simple_udaf
+      - name: Verify Working Directory Clean
+        run: git diff --exit-code
+
+  # Run doc tests
+  linux-test-doc:
+    name: cargo doctest (amd64)
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      # Note: this does not include dictionary_expressions to reduce codegen
+      - name: Run doctests
+        run: cargo test --doc --features avro,jit,scheduler,json
+      - name: Verify Working Directory Clean
+        run: git diff --exit-code
+
+  # verify that the benchmark queries return the correct results
+  verify-benchmark-results:
+    name: verify benchmark results (amd64)
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: /github/home/.cargo
+          # this key equals the ones on `linux-build-lib` for re-use
+          key: cargo-cache-
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      - name: Generate benchmark data and expected query results
+        run: |
+          mkdir -p benchmarks/data/answers
+          git clone https://github.com/databricks/tpch-dbgen.git
+          cd tpch-dbgen
+          make
+          ./dbgen -f -s 1
+          mv *.tbl ../benchmarks/data
+          mv ./answers/* ../benchmarks/data/answers/
+      - name: Verify that benchmark queries return expected results
+        run: |
+          export TPCH_DATA=`pwd`/benchmarks/data
+          cargo test verify_q --profile release-nonlto --features=ci -- --test-threads=1
+          cargo test serde_q --profile release-nonlto --features=ci -- --test-threads=1
+      - name: Verify Working Directory Clean
+        run: git diff --exit-code
+
+  sqllogictest-postgres:
+    name: "Run sqllogictest with Postgres runner"
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: db_test
+          POSTGRES_INITDB_ARGS: --encoding=UTF-8 --lc-collate=C --lc-ctype=C
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Setup toolchain
+        run: |
+          rustup toolchain install stable
+          rustup default stable
+      - name: Run sqllogictest
+        run: PG_COMPAT=true PG_URI="postgresql://postgres:postgres@localhost:$POSTGRES_PORT/db_test" cargo test -p datafusion --test sqllogictests
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+
+  windows:
+    name: cargo test (win64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Install protobuf compiler
+        shell: bash
+        run: |
+          mkdir -p $HOME/d/protoc
+          cd $HOME/d/protoc
+          export PROTO_ZIP="protoc-21.4-win64.zip"
+          curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v21.4/$PROTO_ZIP
+          unzip $PROTO_ZIP
+          export PATH=$PATH:$HOME/d/protoc/bin
+          protoc.exe --version
+      # TODO: this won't cache anything, which is expensive. Setup this action
+      # with a OS-dependent path.
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install stable
+          rustup default stable
+          rustup component add rustfmt
+      - name: Run tests
+        shell: bash
+        run: |
+          export PATH=$PATH:$HOME/d/protoc/bin
+          cargo test
+        env:
+          # do not produce debug symbols to keep memory usage down
+          RUSTFLAGS: "-C debuginfo=0"
+
+  macos:
+    name: cargo test (mac)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Install protobuf compiler
+        shell: bash
+        run: |
+          mkdir -p $HOME/d/protoc
+          cd $HOME/d/protoc
+          export PROTO_ZIP="protoc-21.4-osx-x86_64.zip"
+          curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v21.4/$PROTO_ZIP
+          unzip $PROTO_ZIP
+          echo "$HOME/d/protoc/bin" >> $GITHUB_PATH
+          export PATH=$PATH:$HOME/d/protoc/bin
+          protoc --version
+      # TODO: this won't cache anything, which is expensive. Setup this action
+      # with a OS-dependent path.
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install stable
+          rustup default stable
+          rustup component add rustfmt
+      - name: Run tests
+        shell: bash
+        run: |
+          cargo test
+        env:
+          # do not produce debug symbols to keep memory usage down
+          RUSTFLAGS: "-C debuginfo=0"
+
+  test-datafusion-pyarrow:
+    name: cargo test pyarrow (amd64)
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-20.04
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: /github/home/.cargo
+          # this key equals the ones on `linux-build-lib` for re-use
+          key: cargo-cache-
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install PyArrow
+        run: |
+          echo "LIBRARY_PATH=$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          python -m pip install pyarrow
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      - name: Run datafusion-common tests
+        run: cargo test -p datafusion-common --features=pyarrow
+
+
+  check-fmt:
+    name: Check cargo fmt
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      - name: Run
+        run: |
+          echo '' > datafusion/proto/src/generated/datafusion.rs
+          ci/scripts/rust_fmt.sh
+
+  # Coverage job disabled due to
+  # https://github.com/apache/arrow-datafusion/issues/3678
+
+  # coverage:
+  #   name: coverage
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #       with:
+  #         submodules: true
+  #     - name: Install protobuf compiler
+  #       shell: bash
+  #       run: |
+  #         mkdir -p $HOME/d/protoc
+  #         cd $HOME/d/protoc
+  #         export PROTO_ZIP="protoc-21.4-linux-x86_64.zip"
+  #         curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v21.4/$PROTO_ZIP
+  #         unzip $PROTO_ZIP
+  #         export PATH=$PATH:$HOME/d/protoc/bin
+  #         protoc --version
+  #     - name: Setup Rust toolchain
+  #       run: |
+  #         rustup toolchain install stable
+  #         rustup default stable
+  #         rustup component add rustfmt clippy
+  #     - name: Cache Cargo
+  #       uses: actions/cache@v3
+  #       with:
+  #         path: /home/runner/.cargo
+  #         # this key is not equal because the user is different than on a container (runner vs github)
+  #         key: cargo-coverage-cache3-
+  #     - name: Run coverage
+  #       run: |
+  #         export PATH=$PATH:$HOME/d/protoc/bin
+  #         rustup toolchain install stable
+  #         rustup default stable
+  #         cargo install --version 0.20.1 cargo-tarpaulin
+  #         cargo tarpaulin --all --out Xml
+  #     - name: Report coverage
+  #       continue-on-error: true
+  #       run: bash <(curl -s https://codecov.io/bash)
+
+  clippy:
+    name: clippy
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: /github/home/.cargo
+          # this key equals the ones on `linux-build-lib` for re-use
+          key: cargo-cache-
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      - name: Install Clippy
+        run: rustup component add clippy
+      - name: Run clippy
+        run: ci/scripts/rust_clippy.sh
+
+  # Check answers are correct when hash values collide
+  hash-collisions:
+    name: cargo test hash collisions (amd64)
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: /github/home/.cargo
+          # this key equals the ones on `linux-build-lib` for re-use
+          key: cargo-cache-
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      - name: Run tests
+        run: |
+          cd datafusion
+          cargo test --lib --tests --features=force_hash_collisions
+
+  cargo-toml-formatting-checks:
+    name: check Cargo.toml formatting
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: /github/home/.cargo
+          # this key equals the ones on `linux-build-lib` for re-use
+          key: cargo-cache-
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      - name: Install cargo-tomlfmt
+        run: which cargo-tomlfmt || cargo install cargo-tomlfmt
+
+      - name: Check Cargo.toml formatting
+        run: |
+          # if you encounter error, try rerun the command below, finally run 'git diff' to
+          # check which Cargo.toml introduces formatting violation
+          #
+          # ignore ./Cargo.toml because putting workspaces in multi-line lists make it easy to read
+          ci/scripts/rust_toml_fmt.sh
+          git diff --exit-code
+
+  config-docs-check:
+    name: check configs.md is up-to-date
+    needs: [ linux-build-lib ]
+    runs-on: ubuntu-latest
+    container:
+      image: amd64/rust
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: /github/home/.cargo
+          # this key equals the ones on `linux-build-lib` for re-use
+          key: cargo-cache-
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: stable
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "14"
+      - name: Check if configs.md has been modified
+        run: |
+          # If you encounter an error, run './dev/update_config_docs.sh' and commit
+          ./dev/update_config_docs.sh
+          git diff --exit-code

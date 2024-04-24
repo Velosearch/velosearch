@@ -1,0 +1,674 @@
+warning: /home/RT_Enzyme/repo/fastfull-search/Cargo.toml: unused manifest key: target.x86_64-unknown-linux-gnu.linker
+warning: /home/RT_Enzyme/repo/fastfull-search/Cargo.toml: unused manifest key: target.x86_64-unknown-linux-gnu.rustflags
+warning: unused import: `std::arch::x86_64`
+  --> /home/RT_Enzyme/repo/art-rs/src/lib.rs:41:5
+   |
+41 | use std::arch::x86_64;
+   |     ^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `std::marker::PhantomData`
+  --> /home/RT_Enzyme/repo/art-rs/src/lib.rs:43:5
+   |
+43 | use std::marker::PhantomData;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::rc::Rc`
+  --> /home/RT_Enzyme/repo/art-rs/src/lib.rs:46:5
+   |
+46 | use std::rc::Rc;
+   |     ^^^^^^^^^^^
+
+warning: unknown lint: `invalid_reference_casting`
+   --> /home/RT_Enzyme/repo/art-rs/src/lib.rs:344:21
+    |
+344 |             #[allow(invalid_reference_casting)]
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unknown_lints)]` on by default
+
+warning: unreachable statement
+   --> /home/RT_Enzyme/repo/art-rs/src/node.rs:244:9
+    |
+241 |               return Some(val);
+    |               ---------------- any code following this expression is unreachable
+...
+244 | /         for i in 0..self.keys.len() {
+245 | |             // find key which uses last cell inside values array
+246 | |             if self.keys[i] == self.len as u8 {
+247 | |                 // move value of key which points to last array cell
+...   |
+252 | |             }
+253 | |         }
+    | |_________^ unreachable statement
+    |
+    = note: `#[warn(unreachable_code)]` on by default
+
+warning: value assigned to `matched_len` is never read
+   --> /home/RT_Enzyme/repo/art-rs/src/lib.rs:276:17
+    |
+276 |         let mut matched_len = 0;
+    |                 ^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: the type `[Option<V>; 256]` does not permit being left uninitialized
+   --> /home/RT_Enzyme/repo/art-rs/src/node.rs:378:22
+    |
+378 |             unsafe { MaybeUninit::<[Option<V>; 256]>::uninit().assume_init() };
+    |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |                      |
+    |                      this code causes undefined behavior when executed
+    |                      help: use `MaybeUninit<T>` instead, and only call `assume_init` after initialization is done
+    |
+note: enums with multiple inhabited variants have to be initialized to a variant
+   --> /home/RT_Enzyme/.rustup/toolchains/nightly-2023-03-23-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/option.rs:564:1
+    |
+564 | pub enum Option<T> {
+    | ^^^^^^^^^^^^^^^^^^
+    = note: `#[warn(invalid_value)]` on by default
+
+warning: unknown feature specified for `-Ctarget-feature`: `prefer-256-bit`
+  |
+  = note: it is still passed through to the codegen backend
+  = help: consider filing a feature request
+
+warning: `art-tree` (lib) generated 8 warnings (run `cargo fix --lib -p art-tree` to apply 3 suggestions)
+warning: `cranelift-module` (lib) generated 1 warning (1 duplicate)
+warning: `cranelift-native` (lib) generated 1 warning (1 duplicate)
+warning: `cranelift-jit` (lib) generated 1 warning (1 duplicate)
+warning: `cranelift` (lib) generated 1 warning (1 duplicate)
+warning: unused import: `BooleanArray`
+  --> /home/RT_Enzyme/repo/arrow-datafusion/datafusion/common/src/stats.rs:23:20
+   |
+23 | use arrow::array::{BooleanArray, UInt64Array};
+   |                    ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `arrow::ipc::KeyValue`
+ --> /home/RT_Enzyme/repo/FST-rs/src/fst_builder.rs:1:5
+  |
+1 | use arrow::ipc::KeyValue;
+  |     ^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `tracing::debug`
+ --> /home/RT_Enzyme/repo/FST-rs/src/bitvector.rs:4:5
+  |
+4 | use tracing::debug;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused imports: `K_TERMINATOR`, `LabelsT`
+ --> /home/RT_Enzyme/repo/FST-rs/src/bitvector.rs:6:67
+  |
+6 | use crate::{PosT, LevelT, K_FANOUT, K_WORD_SIZE, SELECT_INTERVAL, LabelsT, K_TERMINATOR};
+  |                                                                   ^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `label_vector::LabelVector`
+  --> /home/RT_Enzyme/repo/FST-rs/src/lib.rs:26:5
+   |
+26 | use label_vector::LabelVector;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> /home/RT_Enzyme/repo/FST-rs/src/fst.rs:111:13
+    |
+111 |         let mut fst_iter = Self {
+    |             ----^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: field `builder` is never read
+ --> /home/RT_Enzyme/repo/FST-rs/src/fst.rs:5:5
+  |
+4 | pub struct FST {
+  |            --- field in this struct
+5 |     builder: FSTBuilder,
+  |     ^^^^^^^
+  |
+  = note: `FST` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+  = note: `#[warn(dead_code)]` on by default
+
+warning: method `is_valid` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/fst.rs:121:8
+    |
+121 |     fn is_valid(&self) -> bool {
+    |        ^^^^^^^^
+
+warning: method `lookup_key_at_node` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_dense.rs:102:12
+    |
+102 |     pub fn lookup_key_at_node(&self, key: &str, level: LevelT, node_num: &mut usize, value: &mut u64) -> bool {
+    |            ^^^^^^^^^^^^^^^^^^
+
+warning: method `iter` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_dense.rs:134:12
+    |
+134 |     pub fn iter(&self) -> LoudsDenseIterator<'_> {
+    |            ^^^^
+
+warning: method `memory_usage` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_dense.rs:142:8
+    |
+142 |     fn memory_usage(&self) -> usize {
+    |        ^^^^^^^^^^^^
+
+warning: method `set_first_label_in_root` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_dense.rs:193:19
+    |
+193 |     pub(crate) fn set_first_label_in_root(&mut self) {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `is_complete` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_dense.rs:249:19
+    |
+249 |     pub(crate) fn is_complete(&self) -> bool {
+    |                   ^^^^^^^^^^^
+
+warning: method `is_valid` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_dense.rs:253:19
+    |
+253 |     pub(crate) fn is_valid(&self) -> bool {
+    |                   ^^^^^^^^
+
+warning: method `is_move_left_complete` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_dense.rs:301:19
+    |
+301 |     pub(crate) fn is_move_left_complete(&self) -> bool {
+    |                   ^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `start_level` is never read
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_sparse.rs:133:5
+    |
+129 | pub struct LoudsSparseIterator<'a>{
+    |            ------------------- field in this struct
+...
+133 |     start_level: LevelT,
+    |     ^^^^^^^^^^^
+
+warning: method `iter` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_sparse.rs:107:12
+    |
+107 |     pub fn iter(&self) -> LoudsSparseIterator {
+    |            ^^^^
+
+warning: method `is_valid` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_sparse.rs:246:19
+    |
+246 |     pub(crate) fn is_valid(&self) -> bool {
+    |                   ^^^^^^^^
+
+warning: method `set_start_node_num` is never used
+   --> /home/RT_Enzyme/repo/FST-rs/src/louds_sparse.rs:250:19
+    |
+250 |     pub(crate) fn set_start_node_num(&mut self, node_num: PosT) {
+    |                   ^^^^^^^^^^^^^^^^^^
+
+warning: field `num_bytes` is never read
+ --> /home/RT_Enzyme/repo/FST-rs/src/label_vector.rs:7:5
+  |
+6 | pub(crate) struct LabelVector {
+  |                   ----------- field in this struct
+7 |     num_bytes: usize,
+  |     ^^^^^^^^^
+  |
+  = note: `LabelVector` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: method `num_bytes` is never used
+  --> /home/RT_Enzyme/repo/FST-rs/src/label_vector.rs:33:12
+   |
+33 |     pub fn num_bytes(&self) -> usize {
+   |            ^^^^^^^^^
+
+warning: `datafusion-common` (lib) generated 2 warnings (1 duplicate) (run `cargo fix --lib -p datafusion-common` to apply 1 suggestion)
+warning: `fst-rs` (lib) generated 21 warnings (1 duplicate) (run `cargo fix --lib -p fst-rs` to apply 5 suggestions)
+warning: field `reads` is never read
+  --> adaptive_hybrid_trie/src/ah_trie/ah_trie.rs:12:5
+   |
+11 | struct AccessStatistics {
+   |        ---------------- field in this struct
+12 |     reads: usize,
+   |     ^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: fields `skip_length`, `sample_size`, `access_list`, `sampling_stat`, `sample_counter`, and `skip_counter` are never read
+  --> adaptive_hybrid_trie/src/ah_trie/ah_trie.rs:25:5
+   |
+22 | pub struct AHTrie<T: Clone+Send+Sync> {
+   |            ------ fields in this struct
+...
+25 |     skip_length: usize,
+   |     ^^^^^^^^^^^
+26 |     _epoch: AtomicUsize,
+27 |     sample_size: usize,
+   |     ^^^^^^^^^^^
+28 |     // Record access term list in this epoch
+29 |     access_list: Arc<DashSet<String>>,
+   |     ^^^^^^^^^^^
+30 |     sampling_stat: Arc<DashMap<String, AccessStatistics>>,
+   |     ^^^^^^^^^^^^^
+...
+37 |     sample_counter: AtomicUsize,
+   |     ^^^^^^^^^^^^^^
+38 |     skip_counter: AtomicUsize,
+   |     ^^^^^^^^^^^^
+
+warning: function `convert_encoding` is never used
+   --> adaptive_hybrid_trie/src/ah_trie/ah_trie.rs:136:10
+    |
+136 | async fn convert_encoding<T: Clone+Send+Sync>(ah_trie_root: Arc<RwLock<AHTrieInner<T>>>, key: &str, encoding: Encoding) {
+    |          ^^^^^^^^^^^^^^^^
+
+warning: method `is_sample` is never used
+  --> adaptive_hybrid_trie/src/ah_trie/ah_trie.rs:67:8
+   |
+67 |     fn is_sample(&self) -> bool {
+   |        ^^^^^^^^^
+
+warning: method `trace` is never used
+   --> adaptive_hybrid_trie/src/ah_trie/ah_trie.rs:102:14
+    |
+102 |     async fn trace(&self, key: &str) {
+    |              ^^^^^
+
+warning: `datafusion-expr` (lib) generated 1 warning (1 duplicate)
+warning: `datafusion-row` (lib) generated 1 warning (1 duplicate)
+warning: `adaptive_hybrid_trie` (lib) generated 6 warnings (1 duplicate)
+warning: `datafusion-physical-expr` (lib) generated 1 warning (1 duplicate)
+warning: `datafusion-sql` (lib) generated 1 warning (1 duplicate)
+warning: `datafusion-optimizer` (lib) generated 1 warning (1 duplicate)
+warning: unused imports: `DataType`, `Field`
+  --> /home/RT_Enzyme/repo/arrow-datafusion/datafusion/core/src/physical_plan/mod.rs:29:35
+   |
+29 | use arrow::datatypes::{SchemaRef, DataType, Field, Schema};
+   |                                   ^^^^^^^^  ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `log::debug`
+  --> /home/RT_Enzyme/repo/arrow-datafusion/datafusion/core/src/physical_plan/mod.rs:37:5
+   |
+37 | use log::debug;
+   |     ^^^^^^^^^^
+
+warning: unused import: `log::debug`
+  --> /home/RT_Enzyme/repo/arrow-datafusion/datafusion/core/src/physical_plan/aggregates/mod.rs:38:5
+   |
+38 | use log::debug;
+   |     ^^^^^^^^^^
+
+warning: unused import: `log::debug`
+  --> /home/RT_Enzyme/repo/arrow-datafusion/datafusion/core/src/physical_plan/aggregates/no_grouping.rs:32:5
+   |
+32 | use log::debug;
+   |     ^^^^^^^^^^
+
+warning: unused imports: `_mm512_add_epi64`, `_mm512_loadu_si512`, `_mm512_popcnt_epi64`, `_mm512_reduce_add_epi64`, `_mm512_setzero_si512`
+  --> /home/RT_Enzyme/repo/arrow-datafusion/datafusion/core/src/physical_plan/boolean.rs:21:198
+   |
+21 | ..._compressstoreu_epi8, _pext_u64, _mm512_setzero_si512, _mm512_loadu_si512, _mm512_popcnt_epi64, _mm512_add_epi64, _mm512_reduce_add_epi64}};
+   |                                     ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `info`
+  --> /home/RT_Enzyme/repo/arrow-datafusion/datafusion/core/src/physical_plan/boolean.rs:29:22
+   |
+29 | use tracing::{debug, info};
+   |                      ^^^^
+
+warning: unused import: `tracing::debug`
+  --> /home/RT_Enzyme/repo/arrow-datafusion/datafusion/core/src/physical_plan/rewrite.rs:23:5
+   |
+23 | use tracing::debug;
+   |     ^^^^^^^^^^^^^^
+
+warning: function `filter_batch` is never used
+   --> /home/RT_Enzyme/repo/arrow-datafusion/datafusion/core/src/physical_plan/boolean.rs:339:4
+    |
+339 | fn filter_batch(
+    |    ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `datafusion` (lib) generated 9 warnings (1 duplicate) (run `cargo fix --lib -p datafusion` to apply 7 suggestions)
+   Compiling fastfull-search v0.1.0 (/home/RT_Enzyme/repo/fastfull-search)
+warning: unused import: `common::cast::as_int64_array`
+ --> src/index/posting_handler.rs:5:116
+  |
+5 | ...a, DataType, Field}, datasource::provider_as_source, common::cast::as_int64_array};
+  |                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Stemmer`
+ --> src/index/posting_handler.rs:8:87
+  |
+8 | use tantivy::tokenizer::{TextAnalyzer, SimpleTokenizer, RemoveLongFilter, LowerCaser, Stemmer};
+  |                                                                                       ^^^^^^^
+
+warning: unused imports: `Count`, `PhraseQuery`
+ --> src/index/tantivy_handler.rs:6:208
+  |
+6 | ...er}, query::{Query, TermQuery, BooleanQuery, PhraseQuery, Occur}, Term, collector::{Count, DocSetCollector}};
+  |                                                 ^^^^^^^^^^^                            ^^^^^
+
+warning: unused imports: `debug`, `info`
+ --> src/index/tantivy_handler.rs:7:15
+  |
+7 | use tracing::{debug, info};
+  |               ^^^^^  ^^^^
+
+warning: unused import: `error::DataFusionError`
+ --> src/optimizer/physical_optimizer/min_operation_range.rs:9:57
+  |
+9 |     ExecutionPlan, boolean::BooleanExec, PhysicalExpr}, error::DataFusionError, 
+  |                                                         ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `collections::HashSet`
+ --> src/optimizer/physical_optimizer/primitives_combination.rs:4:22
+  |
+4 | use std::{sync::Arc, collections::HashSet};
+  |                      ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `boolean::BooleanExec`
+ --> src/optimizer/physical_optimizer/primitives_combination.rs:7:92
+  |
+7 | use datafusion::{physical_optimizer::PhysicalOptimizerRule, physical_plan::{ExecutionPlan, boolean::BooleanExec, rewrite::TreeNodeRewrita...
+  |                                                                                            ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BooleanEvalExpr`
+  --> src/optimizer/physical_optimizer/primitives_combination.rs:10:29
+   |
+10 | use crate::{physical_expr::{BooleanEvalExpr, boolean_eval::{PhysicalPredicate, SubPredicate}, Primitives}, JIT_MAX_NODES, ShortCircuit, d...
+   |                             ^^^^^^^^^^^^^^^
+
+warning: unused import: `compute::and`
+ --> src/datasources/posting_table.rs:5:109
+  |
+5 |     arrow::{datatypes::{SchemaRef, Schema, Field, DataType}, record_batch::RecordBatch, array::UInt64Array, compute::and}, 
+  |                                                                                                             ^^^^^^^^^^^^
+
+warning: unused import: `info`
+  --> src/datasources/posting_table.rs:12:22
+   |
+12 | use tracing::{debug, info};
+   |                      ^^^^
+
+warning: unused imports: `DataType`, `Volatility`, `create_udaf`
+  --> src/context/boolean_context.rs:8:44
+   |
+8  | ...pr, Column, create_udaf}, sql::TableReference, logical_expr::{LogicalPlanBuilder, LogicalPlan, TableSource, Volatility}, 
+   |                ^^^^^^^^^^^                                                                                     ^^^^^^^^^^
+...
+11 | ...lOptimizerRule, scalar::ScalarValue, physical_plan::{PhysicalPlanner, ExecutionPlan}, arrow::datatypes::{Schema, DataType}
+   |                                                                                                                     ^^^^^^^^
+
+warning: unused import: `physical_expr::CountValid`
+  --> src/context/boolean_context.rs:17:156
+   |
+17 | ...ange, RewriteBooleanPredicate, PrimitivesCombination, physical_expr::CountValid};
+   |                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `_mm512_loadu_epi64`, `_mm512_loadu_epi8`, `_mm512_mask_compressstoreu_epi8`
+ --> src/batch/posting_batch.rs:1:141
+  |
+1 | ...4, _mm512_loadu_epi64, _mm512_popcnt_epi64, _mm512_reduce_add_epi64, _mm512_setzero_si512, _mm512_add_epi64, _mm512_loadu_epi8, _mm512_mask_compressstoreu_epi8}, ...
+  |       ^^^^^^^^^^^^^^^^^^                                                                                        ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `info`
+ --> src/batch/posting_batch.rs:5:22
+  |
+5 | use tracing::{debug, info};
+  |                      ^^^^
+
+warning: unused imports: `__m512i`, `_mm512_setzero_si512`
+ --> src/physical_expr/short_circuit_primitives.rs:1:61
+  |
+1 | use std::{any::Any, ptr::NonNull, sync::Arc, arch::x86_64::{__m512i, _mm512_loadu_epi64, _mm512_setzero_si512}};
+  |                                                             ^^^^^^^                      ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `utils::avx512::U64x8`
+ --> src/physical_expr/short_circuit_primitives.rs:6:97
+  |
+6 | use crate::{jit::{ast::{Predicate, Boolean}, jit_short_circuit, AOT_PRIMITIVES}, JIT_MAX_NODES, utils::avx512::U64x8};
+  |                                                                                                 ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `slice::from_raw_parts`
+ --> src/physical_expr/boolean_eval.rs:1:134
+  |
+1 | ..._mm512_and_epi64, _mm512_or_epi64, _mm512_loadu_epi64}, slice::from_raw_parts};
+  |                                                            ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `info`
+ --> src/physical_expr/boolean_eval.rs:6:22
+  |
+6 | use tracing::{debug, info};
+  |                      ^^^^
+
+warning: unused imports: `as_boolean_array`, `cast::as_uint64_array`
+ --> src/physical_expr/count_udf.rs:3:120
+  |
+3 | ...yRef, Int64Array, as_boolean_array}, compute::sum}, common::{downcast_value, DataFusionError, cast::as_uint64_array}};
+  |                      ^^^^^^^^^^^^^^^^                                                            ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `info`
+ --> src/physical_expr/count_udf.rs:4:22
+  |
+4 | use tracing::{debug, info};
+  |                      ^^^^
+
+warning: unused variable: `partition_nums`
+  --> src/index/posting_handler.rs:90:13
+   |
+90 |         let partition_nums = self.partition_nums;
+   |             ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_partition_nums`
+   |
+   = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `space`
+  --> src/index/posting_handler.rs:92:13
+   |
+92 |         let space = self.posting_table.as_ref().unwrap().space_usage();
+   |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_space`
+
+warning: unused variable: `table`
+  --> src/index/posting_handler.rs:94:13
+   |
+94 |         let table = ctx.index("__table__").await?;
+   |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_table`
+
+warning: variable `cnt` is assigned to, but never used
+  --> src/index/posting_handler.rs:99:17
+   |
+99 |         let mut cnt = 0;
+   |                 ^^^
+   |
+   = note: consider using `_cnt` instead
+
+warning: unused variable: `keys`
+   --> src/index/posting_handler.rs:101:17
+    |
+101 |             let keys = test_iter.by_ref().take(100).collect::<Vec<String>>();
+    |                 ^^^^ help: if this is intentional, prefix it with an underscore: `_keys`
+
+warning: value assigned to `cnt` is never read
+   --> src/index/posting_handler.rs:102:13
+    |
+102 |             cnt += 1;
+    |             ^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: unused variable: `idx`
+   --> src/index/posting_handler.rs:121:21
+    |
+121 |                 let idx = i * 5;
+    |                     ^^^ help: if this is intentional, prefix it with an underscore: `_idx`
+
+warning: unused variable: `or_query_2`
+  --> src/index/tantivy_handler.rs:99:13
+   |
+99 |         let or_query_2 = Box::new(TermQuery::new(
+   |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_or_query_2`
+
+warning: unused variable: `space`
+   --> src/index/tantivy_handler.rs:113:17
+    |
+113 |         let mut space = 0;
+    |                 ^^^^^ help: if this is intentional, prefix it with an underscore: `_space`
+
+warning: unused variable: `res`
+   --> src/index/tantivy_handler.rs:119:17
+    |
+119 |             let res = searcher.search(&boolean_query, &DocSetCollector)?.len();
+    |                 ^^^ help: if this is intentional, prefix it with an underscore: `_res`
+
+warning: unused variable: `filters`
+   --> src/datasources/posting_table.rs:103:9
+    |
+103 |         filters: &[Expr],
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_filters`
+
+warning: unused variable: `encoding`
+   --> src/batch/posting_batch.rs:222:25
+    |
+222 |         for (j, (index, encoding)) in indices.iter().zip(is_encoding.into_iter()).enumerate() {
+    |                         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_encoding`
+
+warning: unused variable: `distris`
+   --> src/batch/posting_batch.rs:373:9
+    |
+373 |         distris: &[Option<u64>],
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_distris`
+
+warning: unused variable: `boundary_idx`
+   --> src/batch/posting_batch.rs:374:9
+    |
+374 |         boundary_idx: usize,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_boundary_idx`
+
+warning: unused variable: `min_range`
+   --> src/batch/posting_batch.rs:375:9
+    |
+375 |         min_range: u64,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_min_range`
+
+warning: unused variable: `init_v`
+  --> src/physical_expr/short_circuit_primitives.rs:76:31
+   |
+76 |     pub fn eval_avx512(&self, init_v: Option<Vec<TempChunk>>, batch: &Vec<Option<Vec<Chunk>>>) -> Vec<TempChunk> {
+   |                               ^^^^^^ help: if this is intentional, prefix it with an underscore: `_init_v`
+
+warning: variable does not need to be mutable
+   --> src/index/tantivy_handler.rs:113:13
+    |
+113 |         let mut space = 0;
+    |             ----^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: function `build_boolean_array` is never used
+ --> src/utils/array.rs:7:15
+  |
+7 | pub(crate) fn build_boolean_array(mut res: Vec<u8>, array_len: usize) -> BooleanArray {
+  |               ^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` on by default
+
+warning: field `doc_len` is never read
+  --> src/index/tantivy_handler.rs:15:5
+   |
+14 | pub struct TantivyHandler {
+   |            -------------- field in this struct
+15 |     doc_len: usize,
+   |     ^^^^^^^
+
+warning: field `is_score` is never read
+   --> src/datasources/posting_table.rs:282:5
+    |
+276 | pub struct PostingStream {
+    |            ------------- field in this struct
+...
+282 |     is_score: bool,
+    |     ^^^^^^^^
+
+warning: constant `COMPRESS_INDEX` is never used
+  --> src/batch/posting_batch.rs:43:7
+   |
+43 | const COMPRESS_INDEX: [u8; 64] =  [
+   |       ^^^^^^^^^^^^^^
+
+warning: constant `CHUNK_SIZE` is never used
+   --> src/batch/posting_batch.rs:123:15
+    |
+123 |         const CHUNK_SIZE: usize = 8;
+    |               ^^^^^^^^^^
+
+warning: function `build_boolean_array_u8` is never used
+   --> src/batch/posting_batch.rs:697:4
+    |
+697 | fn build_boolean_array_u8(mut data: Vec<u8>, batch_len: usize) -> ArrayRef {
+    |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `fastfull-search` (lib) generated 44 warnings (1 duplicate) (run `cargo fix --lib -p fastfull-search` to apply 35 suggestions)
+warning: unused import: `common::cast::as_uint64_array`
+ --> src/bin/do_query.rs:3:71
+  |
+3 | use datafusion::{sql::TableReference, datasource::provider_as_source, common::cast::as_uint64_array};
+  |                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Stemmer`
+ --> src/bin/do_query.rs:5:87
+  |
+5 | use tantivy::tokenizer::{TextAnalyzer, SimpleTokenizer, RemoveLongFilter, LowerCaser, Stemmer};
+  |                                                                                       ^^^^^^^
+
+warning: unused variable: `res`
+  --> src/bin/do_query.rs:44:13
+   |
+44 |         let res = index.collect().await.unwrap();
+   |             ^^^ help: if this is intentional, prefix it with an underscore: `_res`
+   |
+   = note: `#[warn(unused_variables)]` on by default
+
+warning: `fastfull-search` (bin "do_query") generated 4 warnings (1 duplicate) (run `cargo fix --bin "do_query"` to apply 3 suggestions)
+    Finished release [optimized] target(s) in 6m 40s
+==========START BENCH===========
+bench CORPUS 1, consume 8 seconds
+bench CORPUS 2, consume 15 seconds
+bench CORPUS 3, consume 20 seconds
+bench CORPUS 4, consume 23 seconds
+bench CORPUS 5, consume 28 seconds
+bench CORPUS 6, consume 31 seconds
+bench CORPUS 7, consume 34 seconds
+bench CORPUS 8, consume 37 seconds
+bench CORPUS 9, consume 40 seconds
+bench CORPUS 10, consume 44 seconds
+bench CORPUS 11, consume 46 seconds
+bench CORPUS 12, consume 50 seconds
+bench CORPUS 13, consume 52 seconds
+bench CORPUS 14, consume 56 seconds
+bench CORPUS 15, consume 60 seconds
+bench CORPUS 16, consume 65 seconds
+bench CORPUS 17, consume 68 seconds
+bench CORPUS 18, consume 72 seconds
+bench CORPUS 19, consume 75 seconds
+[104.18394648829431, 118.08026755852843, 161.59197324414717, 204.70234113712374, 250.1705685618729, 295.561872909699, 336.7257525083612, 379.44147157190633, 424.60869565217394, 466.6354515050167, 508.2742474916388, 545.0434782608696, 584.9799331103679, 635.2976588628762, 677.9966555183946, 721.2842809364548, 748.7792642140469, 780.1270903010034, 824.7625418060201]
+[45.391304347826086, 92.35451505016722, 125.97658862876254, 159.9933110367893, 200.41471571906354, 231.1571906354515, 258.3411371237458, 296.8494983277592, 332.1304347826087, 362.74916387959865, 391.4347826086956, 424.1438127090301, 451.4916387959866, 492.0635451505017, 525.2909698996656, 563.0668896321071, 594.6488294314381, 610.8595317725752, 652.5585284280936]
+[88.41471571906355, 183.22408026755852, 251.65217391304347, 324.40133779264215, 387.04682274247494, 463.1505016722408, 532.0267558528428, 0, 671.0434782608696, 734.2909698996656, 757.2441471571906, 804.4347826086956, 914.9665551839465, 0, 998.5986622073578, 1066.752508361204, 1105.8595317725753, 1175.0702341137123, 1206.2107023411372]
+[74.27759197324414, 115.6923076923077, 139.26421404682273, 185.20066889632108, 226.0133779264214, 249.1505016722408, 279.0903010033445, 299.505016722408, 343.2742474916388, 401.61204013377926, 438.17391304347825, 479.83946488294316, 452.9397993311037, 552.7625418060201, 530.2240802675585, 629.2842809364548, 599.113712374582, 710.1839464882943, 657.4715719063545]
+fish: Unknown command: eacho
+bench.fish (line 15): 
+eacho "=======END BENCH!=========="
+^~~~^

@@ -1,0 +1,11 @@
+    Finished bench [optimized] target(s) in 0.12s
+     Running benches/array_data_validate.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/array_data_validate-e971f35828ec7ce7)
+     Running benches/array_from_vec.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/array_from_vec-3abfb58c30b43a41)
+     Running benches/array_slice.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/array_slice-b020055953dbb399)
+     Running benches/bit_length_kernel.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/bit_length_kernel-287c46efcf0570f3)
+     Running benches/boolean_append_packed.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/boolean_append_packed-549f016a3a01057d)
+     Running benches/buffer_bit_ops.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/buffer_bit_ops-b7d1e9f2a68845a3)
+     Running benches/csv_writer.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/csv_writer-755eb1e2446b3959)
+     Running benches/decimal_validate.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/decimal_validate-3612f1fa81de25e3)
+     Running benches/length_kernel.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/length_kernel-88ecba46a2590ce6)
+     Running benches/string_dictionary_builder.rs (/home/RT_Enzyme/repo/arrow-rs/target/release/deps/string_dictionary_builder-b407311086658f91)

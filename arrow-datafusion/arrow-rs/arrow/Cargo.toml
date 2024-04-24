@@ -1,0 +1,278 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+[package]
+name = "arrow"
+version = "32.0.0"
+description = "Rust implementation of Apache Arrow"
+homepage = "https://github.com/apache/arrow-rs"
+repository = "https://github.com/apache/arrow-rs"
+authors = ["Apache Arrow <dev@arrow.apache.org>"]
+license = "Apache-2.0"
+keywords = ["arrow"]
+include = [
+    "benches/*.rs",
+    "src/**/*.rs",
+    "tests/*.rs",
+    "Cargo.toml",
+]
+edition = "2021"
+rust-version = "1.62"
+
+[lib]
+name = "arrow"
+path = "src/lib.rs"
+bench = false
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+ahash = { version = "0.8", default-features = false, features = ["compile-time-rng"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ahash = { version = "0.8", default-features = false, features = ["runtime-rng"] }
+
+[dependencies]
+arrow-arith = {path = "../arrow-arith" }
+arrow-array = {path = "../arrow-array" }
+arrow-buffer = {path = "../arrow-buffer" }
+arrow-cast = {path = "../arrow-cast" }
+arrow-csv = {path = "../arrow-csv", optional = true }
+arrow-data = {path = "../arrow-data" }
+arrow-ipc = {path = "../arrow-ipc", optional = true }
+arrow-json = {path = "../arrow-json", optional = true }
+arrow-ord = {path = "../arrow-ord" }
+arrow-row = {path = "../arrow-row" }
+arrow-schema = {path = "../arrow-schema" }
+arrow-select = {path = "../arrow-select" }
+arrow-string = {path = "../arrow-string" }
+
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"], optional = true }
+comfy-table = { version = "6.0", optional = true, default-features = false }
+pyo3 = { version = "0.18", default-features = false, optional = true }
+bitflags = { version = "1.2.1", default-features = false, optional = true }
+
+[package.metadata.docs.rs]
+features = ["prettyprint", "ipc_compression", "dyn_cmp_dict", "dyn_arith_dict", "ffi", "pyarrow"]
+
+[features]
+default = ["csv", "ipc", "json"]
+ipc_compression = ["ipc", "arrow-ipc/lz4", "arrow-ipc/zstd"]
+csv = ["arrow-csv"]
+ipc = ["arrow-ipc"]
+json = ["arrow-json"]
+simd = ["arrow-array/simd", "arrow-ord/simd", "arrow-arith/simd"]
+prettyprint = ["comfy-table"]
+# The test utils feature enables code used in benchmarks and tests but
+# not the core arrow code itself. Be aware that `rand` must be kept as
+# an optional dependency for supporting compile to wasm32-unknown-unknown
+# target without assuming an environment containing JavaScript.
+test_utils = ["rand"]
+pyarrow = ["pyo3", "ffi"]
+# force_validate runs full data validation for all arrays that are created
+# this is not enabled by default as it is too computationally expensive
+# but is run as part of our CI checks
+force_validate = ["arrow-data/force_validate"]
+# Enable ffi support
+ffi = ["bitflags"]
+# Enable dyn-comparison of dictionary arrays with other arrays
+# Note: this does not impact comparison against scalars
+dyn_cmp_dict = ["arrow-string/dyn_cmp_dict", "arrow-ord/dyn_cmp_dict"]
+# Enable dyn-arithmetic kernels for dictionary arrays
+# Note: this does not impact arithmetic with scalars
+dyn_arith_dict = ["arrow-arith/dyn_arith_dict"]
+chrono-tz = ["arrow-array/chrono-tz"]
+
+[dev-dependencies]
+chrono = { version = "0.4.23", default-features = false, features = ["clock"] }
+criterion = { version = "0.4", default-features = false }
+half = { version = "2.1", default-features = false, features = ["num-traits"] }
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
+tempfile = { version = "3", default-features = false }
+
+[build-dependencies]
+
+[[example]]
+name = "dynamic_types"
+required-features = ["prettyprint"]
+path = "./examples/dynamic_types.rs"
+
+[[example]]
+name = "read_csv"
+required-features = ["prettyprint", "csv"]
+path = "./examples/read_csv.rs"
+
+[[example]]
+name = "read_csv_infer_schema"
+required-features = ["prettyprint", "csv"]
+path = "./examples/read_csv_infer_schema.rs"
+
+[[bench]]
+name = "aggregate_kernels"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "array_from_vec"
+harness = false
+
+[[bench]]
+name = "builder"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "buffer_bit_ops"
+harness = false
+
+[[bench]]
+name = "boolean_kernels"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "boolean_append_packed"
+harness = false
+
+[[bench]]
+name = "arithmetic_kernels"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "cast_kernels"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "comparison_kernels"
+harness = false
+required-features = ["test_utils", "dyn_cmp_dict"]
+
+[[bench]]
+name = "filter_kernels"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "take_kernels"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "interleave_kernels"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "length_kernel"
+harness = false
+
+[[bench]]
+name = "bit_length_kernel"
+harness = false
+
+[[bench]]
+name = "sort_kernel"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "partition_kernels"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "csv_writer"
+harness = false
+required-features = ["csv"]
+
+[[bench]]
+name = "csv_reader"
+harness = false
+required-features = ["test_utils", "csv"]
+
+[[bench]]
+name = "json_reader"
+harness = false
+required-features = ["test_utils", "json"]
+
+[[bench]]
+name = "equal"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "array_slice"
+harness = false
+
+[[bench]]
+name = "concatenate_kernel"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "mutable_array"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "buffer_create"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "string_dictionary_builder"
+harness = false
+
+[[bench]]
+name = "substring_kernels"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "array_data_validate"
+harness = false
+
+[[bench]]
+name = "decimal_validate"
+harness = false
+
+[[bench]]
+name = "row_format"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "bitwise_kernel"
+harness = false
+required-features = ["test_utils"]
+
+[[bench]]
+name = "lexsort"
+harness = false
+required-features = ["test_utils"]
+
+[[test]]
+name = "csv"
+required-features = ["csv", "chrono-tz"]
+
+[[test]]
+name = "pyarrow"
+required-features = ["pyarrow"]
+
+[[test]]
+name = "array_cast"
+required-features = ["chrono-tz"]

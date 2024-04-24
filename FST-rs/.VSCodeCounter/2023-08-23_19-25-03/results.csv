@@ -1,0 +1,9 @@
+"filename", "language", "Rust", "comment", "blank", "total"
+"/home/RT_Enzyme/repo/FST-rs/src/bitvector.rs", "Rust", 318, 8, 37, 363
+"/home/RT_Enzyme/repo/FST-rs/src/fst.rs", "Rust", 200, 1, 20, 221
+"/home/RT_Enzyme/repo/FST-rs/src/fst_builder.rs", "Rust", 352, 24, 63, 439
+"/home/RT_Enzyme/repo/FST-rs/src/label_vector.rs", "Rust", 70, 1, 10, 81
+"/home/RT_Enzyme/repo/FST-rs/src/lib.rs", "Rust", 33, 0, 10, 43
+"/home/RT_Enzyme/repo/FST-rs/src/louds_dense.rs", "Rust", 332, 23, 50, 405
+"/home/RT_Enzyme/repo/FST-rs/src/louds_sparse.rs", "Rust", 294, 15, 40, 349
+"Total", "-", 1599, 72, 230, 1901

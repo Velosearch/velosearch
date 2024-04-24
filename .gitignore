@@ -1,0 +1,13 @@
+/target
+/data
+/test
+*.log
+/.vscode
+/.VSCodeCounter
+*.bin
+*.data
+*.data.old
+*.svg
+*.bin
+*.data
+*.old

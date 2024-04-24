@@ -1,0 +1,39 @@
+// use std::{env, fs::File, io::{self, BufRead}};
+
+// use datafusion::{catalog::schema, datasource::provider_as_source, sql::TableReference};
+// use fastfull_search::{boolean_parser, parser, utils::builder::deserialize_posting_table, BooleanContext};
+// use jemallocator::Jemalloc;
+
+
+// #[global_allocator]
+// static GLOBAL: Jemalloc = Jemalloc;
+
+// #[tokio::main]
+// async fn main() {
+//     let args: Vec<String> = env::args().collect();
+//     let index_dir = args.get(1).expect("Should give the path to index.");
+//     let query_dir = args.get(2).expect("Should give the path to query.");
+//     let posting_table = deserialize_posting_table(index_dir.clone(), 1).unwrap();
+
+//     let file = File::open(query_dir).unwrap();
+//     let reader = io::BufReader::new(file);
+//     let queries: Vec<String> = reader.lines().into_iter().map(|l| l.unwrap()).collect();
+
+//     let ctx = BooleanContext::new();
+//     ctx.register_index(TableReference::Bare { table: "__table__".into() }, Arc::new(posting_table)).unwrap();
+//     let provider = ctx.index_provider("__table__").await.unwrap();
+//     let table_source = provider_as_source(Arc::clone(&provider));
+
+//     for query in queries {
+//         let predicate = if let Ok(expr) = parser::boolean(&query) {
+//             expr
+//         } else {
+//             boolean_parser::boolean(&query).unwrap()
+//         };
+
+//         let query = ctx.boolean_with_provider(table_source.clone(), &schema, predicate, false).await.unwrap();
+//         let execution_plan = query.create_physical_plan().await.unwrap();
+
+
+//     }
+// }

@@ -1,0 +1,54 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+[package]
+name = "datafusion-benchmarks"
+description = "DataFusion Benchmarks"
+version = "18.0.0"
+edition = "2021"
+authors = ["Apache Arrow <dev@arrow.apache.org>"]
+homepage = "https://github.com/apache/arrow-datafusion"
+repository = "https://github.com/apache/arrow-datafusion"
+license = "Apache-2.0"
+rust-version = "1.62"
+
+[features]
+ci = []
+default = ["mimalloc"]
+simd = ["datafusion/simd"]
+snmalloc = ["snmalloc-rs"]
+
+[dependencies]
+arrow = { git="https://github.com/RTEnzyme/arrow-rs", branch="columnar4inverted" }
+datafusion = { path = "../datafusion/core", version = "18.0.0", features = ["scheduler"] }
+env_logger = "0.10"
+futures = "0.3"
+mimalloc = { version = "0.1", optional = true, default-features = false }
+num_cpus = "1.13.0"
+object_store = "0.5.4"
+parquet = { git="https://github.com/RTEnzyme/arrow-rs", branch="columnar4inverted" }
+parquet-test-utils = { path = "../parquet-test-utils/", version = "0.1.0" }
+rand = "0.8.4"
+serde = { version = "1.0.136", features = ["derive"] }
+serde_json = "1.0.78"
+snmalloc-rs = { version = "0.3", optional = true }
+structopt = { version = "0.3", default-features = false }
+test-utils = { path = "../test-utils/", version = "0.1.0" }
+tokio = { version = "^1.0", features = ["macros", "rt", "rt-multi-thread", "parking_lot"] }
+
+[dev-dependencies]
+datafusion-proto = { path = "../datafusion/proto", version = "18.0.0" }
