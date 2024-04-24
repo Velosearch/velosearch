@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"velosearch":[["impl PhysicalExpr for <a class=\"struct\" href=\"velosearch/physical_expr/short_circuit_primitives/struct.ShortCircuit.html\" title=\"struct velosearch::physical_expr::short_circuit_primitives::ShortCircuit\">ShortCircuit</a>"],["impl PhysicalExpr for <a class=\"struct\" href=\"velosearch/physical_expr/boolean_eval/struct.BooleanEvalExpr.html\" title=\"struct velosearch::physical_expr::boolean_eval::BooleanEvalExpr\">BooleanEvalExpr</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

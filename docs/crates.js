@@ -1,0 +1,1 @@
+window.ALL_CRATES = ["concurrency","do_query","do_query_offline","do_query_scored","test_fused_primitve","vector_size","vector_size_simulate","velosearch"];
