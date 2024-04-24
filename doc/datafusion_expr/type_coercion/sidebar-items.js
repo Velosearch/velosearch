@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["is_date","is_null","is_numeric","is_signed_numeric","is_timestamp","is_uft8"],"mod":["aggregates","binary","functions","other"]};

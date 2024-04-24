@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["build_in","moving_min_max","row_accumulator","utils"],"trait":["AggregateExpr"]};

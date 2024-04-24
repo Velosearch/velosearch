@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Occur","UserInputAst","UserInputBound","UserInputLeaf"],"fn":["parse_query"],"struct":["Error","UserInputLiteral"]};

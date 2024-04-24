@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["error"],"static":["INDEX_WRITER_LOCK","META_LOCK"],"struct":["AntiCallToken","DirectoryLock","FileSlice","GarbageCollectionResult","Lock","ManagedDirectory","MmapDirectory","OwnedBytes","RamDirectory","WatchCallback","WatchCallbackList","WatchHandle"],"trait":["Directory","DirectoryClone","FileHandle","TerminatingWrite"],"type":["WritePtr"]};

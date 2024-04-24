@@ -1,7 +1,7 @@
 use clap::Parser;
-use fastfull_search::index::{BaseHandler, SplitHandler, SplitO1, BooleanQueryHandler, PostingHandler, TantivyHandler};
-use fastfull_search::{Result, FastArgs, Handler};
-use fastfull_search::index::handler::HandlerT;
+use velosearch::index::{BaseHandler, SplitHandler, SplitO1, BooleanQueryHandler, PostingHandler, TantivyHandler};
+use velosearch::{Result, FastArgs, Handler};
+use velosearch::index::handler::HandlerT;
 use jemallocator::Jemalloc;
 use tracing::{info, Level};
 

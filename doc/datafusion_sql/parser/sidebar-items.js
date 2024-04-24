@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Statement"],"struct":["CreateExternalTable","DFParser","DescribeTableStmt"]};

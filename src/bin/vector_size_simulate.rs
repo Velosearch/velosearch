@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use datafusion::physical_plan::expressions::Column;
-use fastfull_search::{jit::ast::Predicate, physical_expr::{boolean_eval::{Chunk, PhysicalPredicate, SubPredicate}, Primitives}, ShortCircuit};
+use velosearch::{jit::ast::Predicate, physical_expr::{boolean_eval::{Chunk, PhysicalPredicate, SubPredicate}, Primitives}, ShortCircuit};
 use rand::seq::IteratorRandom;
 
 

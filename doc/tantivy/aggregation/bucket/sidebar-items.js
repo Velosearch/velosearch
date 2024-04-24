@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Order","OrderTarget"],"struct":["CustomOrder","HistogramAggregation","HistogramBounds","RangeAggregation","RangeAggregationRange","SegmentTermCollector","TermsAggregation"]};

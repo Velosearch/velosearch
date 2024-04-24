@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Boxed","Horizontal","Justification","Order","Position","Stacked","Vertical"],"struct":["Properties"]};

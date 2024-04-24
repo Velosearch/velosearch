@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["TableReference"],"mod":["catalog","listing_schema","schema"],"struct":["ResolvedTableReference"]};

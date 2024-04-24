@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_SCHEMA_INFER_MAX_RECORD"],"mod":["avro","csv","file_type","json","parquet"],"trait":["FileFormat"]};

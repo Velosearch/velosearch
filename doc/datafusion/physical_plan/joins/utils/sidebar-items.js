@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["JoinSide"],"fn":["adjust_right_output_partitioning","build_join_schema","check_join_is_valid","combine_join_equivalence_properties","cross_join_equivalence_properties","partitioned_join_output_partitioning"],"struct":["ColumnIndex","JoinFilter"],"type":["JoinOn","JoinOnRef"]};

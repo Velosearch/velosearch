@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["read_as_batch","read_row"],"struct":["RowReader"]};

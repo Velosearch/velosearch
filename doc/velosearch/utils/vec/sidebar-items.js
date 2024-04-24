@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["copy_advance_aligned","set_vec_len_by_ptr","store_advance","store_advance_aligned"]};

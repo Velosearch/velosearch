@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["partition_type_wrap"],"struct":["AvroExec","CsvExec","FileMeta","FileScanConfig","FileStream","NdJsonExec","ParquetExec","ParquetFileMetrics"],"trait":["FileOpener","ParquetFileReaderFactory"],"type":["FileOpenFuture"]};

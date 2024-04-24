@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["BackendCoordAndZ","BackendCoordOnly","Circle","ComposedElement","Cross","Cubiod","DynElement","EmptyElement","MultiLineText","PathElement","Pie","Pixel","Polygon","Rectangle","Text","TriangleMarker"],"trait":["CoordMapper","Drawable","IntoDynElement","PointCollection","PointElement"],"type":["Path"]};

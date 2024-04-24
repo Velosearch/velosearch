@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["default_session_builder"],"struct":["ExecutionProps","SessionConfig","SessionContext","SessionState","TaskContext"],"trait":["QueryPlanner"]};

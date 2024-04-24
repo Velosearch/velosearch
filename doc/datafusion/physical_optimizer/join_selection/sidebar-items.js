@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["supports_swap","swap_hash_join","swap_join_type","swap_reverting_projection"],"struct":["JoinSelection"]};

@@ -1,7 +1,7 @@
 #![feature(sync_unsafe_cell)]
 use criterion::{Criterion, BenchmarkId, criterion_group, criterion_main};
 use datafusion::physical_plan::expressions::Column;
-use fastfull_search::{jit::{ast::Predicate, jit_short_circuit, Boolean}, ShortCircuit, physical_expr::{boolean_eval::{SubPredicate, PhysicalPredicate, Chunk}, Primitives, BooleanEvalExpr}};
+use velosearch::{jit::{ast::Predicate, jit_short_circuit, Boolean}, ShortCircuit, physical_expr::{boolean_eval::{SubPredicate, PhysicalPredicate, Chunk}, Primitives, BooleanEvalExpr}};
 use futures::stream::iter;
 use rand::seq::IteratorRandom;
 

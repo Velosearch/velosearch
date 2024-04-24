@@ -1,6 +1,6 @@
 use std::{env, sync::Arc, fs::File, io::{self, BufRead}};
 use datafusion::{prelude::*, sql::TableReference, datasource::provider_as_source,arrow::array::UInt64Array};
-use fastfull_search::{parser, boolean_parser, utils::{Result, builder::deserialize_posting_table}, BooleanContext, jit::AOT_PRIMITIVES, query};
+use velosearch::{parser, boolean_parser, utils::{Result, builder::deserialize_posting_table}, BooleanContext, jit::AOT_PRIMITIVES, query};
 use jemallocator::Jemalloc;
 
 

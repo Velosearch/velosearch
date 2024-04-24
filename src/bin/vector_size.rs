@@ -1,6 +1,6 @@
 use std::{borrow::BorrowMut, env, sync::Arc};
 use datafusion::{prelude::*, sql::TableReference, datasource::provider_as_source,arrow::array::UInt64Array, prelude::Expr};
-use fastfull_search::{boolean_parser, jit::AOT_PRIMITIVES, parser, utils::{builder::deserialize_posting_table, Result}, BooleanContext, STEP_LEN};
+use velosearch::{boolean_parser, jit::AOT_PRIMITIVES, parser, utils::{builder::deserialize_posting_table, Result}, BooleanContext, STEP_LEN};
 use jemallocator::Jemalloc;
 
 

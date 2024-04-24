@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["AssumeSortedByItem","Difference","Intersection","MultiwayUnion","Pairs","SymmetricDifference","Union"],"trait":["SortedByItem"]};

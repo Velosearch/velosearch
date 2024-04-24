@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ScalarValue"],"fn":["date32_add","date64_add","microseconds_add","milliseconds_add","nanoseconds_add","seconds_add"],"trait":["ScalarType"]};

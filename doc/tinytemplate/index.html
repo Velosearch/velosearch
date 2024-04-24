@@ -1,0 +1,55 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="TinyTemplate"><title>tinytemplate - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-c4dbdcde0fbd8430.css" id="mainThemeStyle"><div id="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="tinytemplate" data-themes="" data-resource-suffix="" data-rustdoc-version="1.70.0-nightly (a266f1199 2023-03-22)" data-search-js="search-a6dd7f063a44c279.js" data-settings-js="settings-f0c5c39777a9a2f6.js" data-settings-css="settings-0bcba95ff279c1db.css" data-theme-light-css="light-db279b6232be9c13.css" data-theme-dark-css="dark-cf923f49f397b216.css" data-theme-ayu-css="ayu-be46fdc453a55015.css" ></div><script src="../static.files/storage-9184409068f70b79.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-f5a2577c5297a973.js"></script><noscript><link rel="stylesheet" media="(prefers-color-scheme:light)" href="../static.files/light-db279b6232be9c13.css"><link rel="stylesheet" media="(prefers-color-scheme:dark)" href="../static.files/dark-cf923f49f397b216.css"><link rel="stylesheet" href="../static.files/noscript-13285aec31fa243e.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="logo-container" href="../tinytemplate/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><h2></h2></nav><nav class="sidebar"><a class="logo-container" href="../tinytemplate/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><h2 class="location"><a href="#">Crate tinytemplate</a></h2><div class="sidebar-elems"><ul class="block"><li class="version">Version 1.2.1</li><li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#modules">Modules</a></li><li><a href="#structs">Structs</a></li><li><a href="#functions">Functions</a></li><li><a href="#types">Type Definitions</a></li></ul></section></div></nav><main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">tinytemplate</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="srclink" href="../src/tinytemplate/lib.rs.html#1-260">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h3 id="tinytemplate"><a href="#tinytemplate">TinyTemplate</a></h3>
+<p>TinyTemplate is a minimal templating library originally designed for use in <a href="https://github.com/bheisler/criterion.rs">Criterion.rs</a>.
+It deliberately does not provide all of the features of a full-power template engine, but in
+return it provides a simple API, clear templating syntax, decent performance and very few
+dependencies.</p>
+<h3 id="features"><a href="#features">Features</a></h3>
+<p>The most important features are as follows (see the <a href="syntax/index.html">syntax</a> module for full
+details on the template syntax):</p>
+<ul>
+<li>Rendering values - <code>{ myvalue }</code></li>
+<li>Conditionals - <code>{{ if foo }}Foo is true{{ else }}Foo is false{{ endif }}</code></li>
+<li>Loops - <code>{{ for value in row }}{value}{{ endfor }}</code></li>
+<li>Customizable value formatters <code>{ value | my_formatter }</code></li>
+<li>Macros <code>{{ call my_template with foo }}</code></li>
+</ul>
+<h3 id="restrictions"><a href="#restrictions">Restrictions</a></h3>
+<p>TinyTemplate was designed with the assumption that the templates are available as static strings,
+either using string literals or the <code>include_str!</code> macro. Thus, it borrows <code>&amp;str</code> slices from the
+template text itself and uses them during the rendering process. Although it is possible to use
+TinyTemplate with template strings loaded at runtime, this is not recommended.</p>
+<p>Additionally, TinyTemplate can only render templates into Strings. If you need to render a
+template directly to a socket or file, TinyTemplate may not be right for you.</p>
+<h3 id="example"><a href="#example">Example</a></h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="attr">#[macro_use]
+</span><span class="kw">extern crate </span>serde_derive;
+<span class="kw">extern crate </span>tinytemplate;
+
+<span class="kw">use </span>tinytemplate::TinyTemplate;
+<span class="kw">use </span>std::error::Error;
+
+<span class="attr">#[derive(Serialize)]
+</span><span class="kw">struct </span>Context {
+    name: String,
+}
+
+<span class="kw">static </span>TEMPLATE : <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str = <span class="string">&quot;Hello {name}!&quot;</span>;
+
+<span class="kw">pub fn </span>main() -&gt; <span class="prelude-ty">Result</span>&lt;(), Box&lt;Error&gt;&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>tt = TinyTemplate::new();
+    tt.add_template(<span class="string">&quot;hello&quot;</span>, TEMPLATE)<span class="question-mark">?</span>;
+
+    <span class="kw">let </span>context = Context {
+        name: <span class="string">&quot;World&quot;</span>.to_string(),
+    };
+
+    <span class="kw">let </span>rendered = tt.render(<span class="string">&quot;hello&quot;</span>, <span class="kw-2">&amp;</span>context)<span class="question-mark">?</span>;
+    <span class="macro">println!</span>(<span class="string">&quot;{}&quot;</span>, rendered);
+
+    <span class="prelude-val">Ok</span>(())
+}</code></pre></div>
+</div></details><h2 id="modules" class="small-section-header"><a href="#modules">Modules</a></h2><ul class="item-table"><li><div class="item-name"><a class="mod" href="error/index.html" title="mod tinytemplate::error">error</a></div><div class="desc docblock-short">Module containing the error type returned by TinyTemplate if an error occurs.</div></li><li><div class="item-name"><a class="mod" href="syntax/index.html" title="mod tinytemplate::syntax">syntax</a></div><div class="desc docblock-short">Documentation of TinyTemplate’s template syntax.</div></li></ul><h2 id="structs" class="small-section-header"><a href="#structs">Structs</a></h2><ul class="item-table"><li><div class="item-name"><a class="struct" href="struct.TinyTemplate.html" title="struct tinytemplate::TinyTemplate">TinyTemplate</a></div><div class="desc docblock-short">The TinyTemplate struct is the entry point for the TinyTemplate library. It contains the
+template and formatter registries and provides functions to render templates as well as to
+register templates and formatters.</div></li></ul><h2 id="functions" class="small-section-header"><a href="#functions">Functions</a></h2><ul class="item-table"><li><div class="item-name"><a class="fn" href="fn.escape.html" title="fn tinytemplate::escape">escape</a></div><div class="desc docblock-short">Appends <code>value</code> to <code>output</code>, performing HTML-escaping in the process.</div></li><li><div class="item-name"><a class="fn" href="fn.format.html" title="fn tinytemplate::format">format</a></div><div class="desc docblock-short">The format function is used as the default value formatter for all values unless the user
+specifies another. It is provided publicly so that it can be called as part of custom formatters.
+Values are formatted as follows:</div></li><li><div class="item-name"><a class="fn" href="fn.format_unescaped.html" title="fn tinytemplate::format_unescaped">format_unescaped</a></div><div class="desc docblock-short">Identical to <a href="fn.format.html"><code>format</code></a> except that this does not perform HTML escaping.</div></li></ul><h2 id="types" class="small-section-header"><a href="#types">Type Definitions</a></h2><ul class="item-table"><li><div class="item-name"><a class="type" href="type.ValueFormatter.html" title="type tinytemplate::ValueFormatter">ValueFormatter</a></div><div class="desc docblock-short">Type alias for closures which can be used as value formatters.</div></li></ul></section></div></main></body></html>

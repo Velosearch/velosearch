@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["expr_list_eq_any_order","expr_list_eq_strict_order","normalize_expr_with_equivalence_properties","normalize_out_expr_with_alias_schema","normalize_sort_expr_with_equivalence_properties","ordering_satisfy","ordering_satisfy_concrete","sort_expr_list_eq_strict_order","split_conjunction"]};

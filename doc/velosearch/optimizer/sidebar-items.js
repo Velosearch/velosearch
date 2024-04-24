@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["planner"],"struct":["MinOperationRange","PartitionPredicateReorder","PrimitivesCombination","PushDownProjection","RewriteBooleanPredicate"]};

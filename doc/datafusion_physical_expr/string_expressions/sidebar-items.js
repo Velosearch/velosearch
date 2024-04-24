@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["ascii","btrim","chr","concat","concat_ws","initcap","lower","ltrim","repeat","replace","rtrim","split_part","starts_with","to_hex","upper","uuid"]};

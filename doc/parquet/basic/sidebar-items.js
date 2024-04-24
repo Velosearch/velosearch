@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ColumnOrder","Compression","ConvertedType","Encoding","LogicalType","PageType","Repetition","SortOrder","Type"]};

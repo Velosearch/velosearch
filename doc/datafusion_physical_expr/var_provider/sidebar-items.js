@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["VarType"],"fn":["is_system_variables"],"trait":["VarProvider"]};

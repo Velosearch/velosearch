@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ColumnWriter","Level"],"fn":["get_column_writer","get_typed_column_writer","get_typed_column_writer_mut","get_typed_column_writer_ref"],"struct":["ColumnCloseResult","GenericColumnWriter"],"type":["ColumnWriterImpl"]};

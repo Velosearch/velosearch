@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["batch_byte_size","build_checked_file_list","build_file_list","collect","compute_record_batch_statistics","get_meet_of_orderings","merge_batches","merge_multiple_batches","transpose"],"struct":["AbortOnDropMany","AbortOnDropSingle","IPCWriter","SizedRecordBatchStream"]};

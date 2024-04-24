@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["get_accum_scalar_values_as_arrays"]};

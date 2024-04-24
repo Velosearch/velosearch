@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DEFAULT_BLOOM_FILTER_FPP","DEFAULT_BLOOM_FILTER_NDV"],"enum":["EnabledStatistics","WriterVersion"],"struct":["BloomFilterProperties","ReaderProperties","ReaderPropertiesBuilder","WriterProperties","WriterPropertiesBuilder"],"type":["ReaderPropertiesPtr","WriterPropertiesPtr"]};

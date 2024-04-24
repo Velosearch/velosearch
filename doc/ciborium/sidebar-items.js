@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Value"],"fn":["from_reader","into_writer"],"macro":["cbor"],"mod":["de","ser","tag","value"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["AvroReadOptions","CsvReadOptions","NdJsonReadOptions","ParquetReadOptions"],"trait":["ReadOptions"]};

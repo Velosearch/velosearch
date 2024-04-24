@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["create_physical_expr","create_physical_fun","make_scalar_function"]};

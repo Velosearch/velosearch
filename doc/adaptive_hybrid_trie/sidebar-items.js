@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["ah_trie"],"struct":["HashTermIdx"],"type":["TermIdx"]};

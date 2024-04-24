@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["BuiltInWindowExpr","PartitionBatchState","PlainAggregateWindowExpr","SlidingAggregateWindowExpr","WindowAggState","WindowState"],"trait":["BuiltInWindowFunctionExpr","WindowExpr"],"type":["PartitionBatches","PartitionKey","PartitionWindowAggStates"]};

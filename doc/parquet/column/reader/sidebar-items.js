@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ColumnReader"],"fn":["get_column_reader","get_typed_column_reader"],"struct":["GenericColumnReader"],"type":["ColumnReaderImpl"]};

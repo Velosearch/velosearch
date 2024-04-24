@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"macro":["fn_add_idx","fn_get_idx","fn_get_idx_opt","fn_set_idx","get_idx","set_idx"],"mod":["accessor","layout","reader","writer"],"struct":["MutableRecordBatch"]};

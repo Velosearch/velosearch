@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["compute_num_bits","minmax"],"struct":["BitPacker","BitUnpacker","BlockedBitpacker"]};

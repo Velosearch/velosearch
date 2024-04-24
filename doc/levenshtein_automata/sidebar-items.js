@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["SINK_STATE"],"enum":["Distance"],"struct":["DFA","LevenshteinAutomatonBuilder"]};

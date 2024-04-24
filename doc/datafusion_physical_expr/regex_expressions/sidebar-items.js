@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["regexp_match","regexp_replace","specialize_regexp_replace"]};

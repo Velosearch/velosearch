@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["CatalogOptions","ConfigEntry","ConfigOptions","ExecutionOptions","ExplainOptions","Extensions","OptimizerOptions","ParquetOptions","SqlParserOptions"],"trait":["ConfigExtension","ExtensionOptions"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["array","avx512","builder","chunk","err","json","vec"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["character_length","left","lpad","reverse","right","rpad","strpos","substr","translate"]};

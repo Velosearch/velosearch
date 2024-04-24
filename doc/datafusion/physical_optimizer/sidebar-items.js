@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["aggregate_statistics","coalesce_batches","dist_enforcement","global_sort_selection","join_selection","optimizer","pipeline_checker","pipeline_fixer","pruning","repartition","sort_enforcement"]};

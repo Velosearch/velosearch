@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Error","GetResult"],"mod":["chunked","delimited","limit","local","memory","path","prefix","throttle"],"struct":["ListResult","ObjectMeta"],"trait":["ObjectStore"],"type":["DynObjectStore","MultipartId","Result"]};

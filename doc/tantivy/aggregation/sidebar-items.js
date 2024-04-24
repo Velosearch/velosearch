@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_BUCKET_COUNT"],"enum":["Key"],"mod":["agg_req","agg_result","bucket","intermediate_agg_result","metric"],"struct":["AggregationCollector","AggregationSegmentCollector","DistributedAggregationCollector"],"type":["SerializedKey"]};

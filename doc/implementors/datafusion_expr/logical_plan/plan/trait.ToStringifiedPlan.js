@@ -1,0 +1,4 @@
+(function() {var implementors = {
+"datafusion":[["impl&lt;'a&gt; <a class=\"trait\" href=\"datafusion_expr/logical_plan/plan/trait.ToStringifiedPlan.html\" title=\"trait datafusion_expr::logical_plan::plan::ToStringifiedPlan\">ToStringifiedPlan</a> for <a class=\"struct\" href=\"datafusion/physical_plan/display/struct.DisplayableExecutionPlan.html\" title=\"struct datafusion::physical_plan::display::DisplayableExecutionPlan\">DisplayableExecutionPlan</a>&lt;'a&gt;"]],
+"datafusion_expr":[]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"trait":["Configure","Data","Plot","Set"]};

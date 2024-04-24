@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["Art","ByteString","Float32","Float64","KeyBuilder"],"trait":["Key"]};

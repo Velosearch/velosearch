@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"static":["SUPPORTED_COALESCE_TYPES"],"struct":["CaseBuilder"]};

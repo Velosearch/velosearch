@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["UNNAMED_TABLE"],"fn":["build_join_schema","project","project_with_column_index","subquery_alias","table_scan","union","unnest","wrap_projection_for_join_if_necessary"],"struct":["LogicalPlanBuilder","LogicalTableSource"]};

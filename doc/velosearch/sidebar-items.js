@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Handler"],"mod":["batch","boolean_parser","context","datasources","index","jit","optimizer","parser","physical_expr","query","utils"],"struct":["CONCURRENCY","FastArgs","STEP_LEN","TOKENIZER"]};

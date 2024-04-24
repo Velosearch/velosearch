@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["can_coerce_from","data_types"]};

@@ -1,0 +1,42 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Yes, but what is it really ?"><title>fastdivide - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-c4dbdcde0fbd8430.css" id="mainThemeStyle"><div id="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="fastdivide" data-themes="" data-resource-suffix="" data-rustdoc-version="1.70.0-nightly (a266f1199 2023-03-22)" data-search-js="search-a6dd7f063a44c279.js" data-settings-js="settings-f0c5c39777a9a2f6.js" data-settings-css="settings-0bcba95ff279c1db.css" data-theme-light-css="light-db279b6232be9c13.css" data-theme-dark-css="dark-cf923f49f397b216.css" data-theme-ayu-css="ayu-be46fdc453a55015.css" ></div><script src="../static.files/storage-9184409068f70b79.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-f5a2577c5297a973.js"></script><noscript><link rel="stylesheet" media="(prefers-color-scheme:light)" href="../static.files/light-db279b6232be9c13.css"><link rel="stylesheet" media="(prefers-color-scheme:dark)" href="../static.files/dark-cf923f49f397b216.css"><link rel="stylesheet" href="../static.files/noscript-13285aec31fa243e.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="logo-container" href="../fastdivide/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><h2></h2></nav><nav class="sidebar"><a class="logo-container" href="../fastdivide/index.html"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><h2 class="location"><a href="#">Crate fastdivide</a></h2><div class="sidebar-elems"><ul class="block"><li class="version">Version 0.4.0</li><li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#enums">Enums</a></li></ul></section></div></nav><main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1>Crate <a class="mod" href="#">fastdivide</a><button id="copy-path" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="srclink" href="../src/fastdivide/lib.rs.html#1-250">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="yes-but-what-is-it-really-"><a href="#yes-but-what-is-it-really-">Yes, but what is it really ?</a></h2>
+<p>Division is a very costly operation for your CPU (probably between 10
+and 40 cycles).</p>
+<p>You may have noticed that when the divisor is known at compile time,
+your compiler transforms the operations into a cryptic combination of
+a multiplication and bitshift.</p>
+<p>Fastdivide is about doing the same trick your compiler uses but
+when the divisor is unknown at compile time.
+Of course, it requires preprocessing a datastructure that is
+specific to your divisor, and using it only makes sense if
+this preprocessing is amortized by a high number of division (with the
+same divisor).</p>
+<h2 id="when-is-it-useful-"><a href="#when-is-it-useful-">When is it useful ?</a></h2>
+<p>You should probably use <code>fastdivide</code>, if you do a lot (&gt; 10) of division with the same divisor ;
+and these divisions are a bottleneck in your program.</p>
+<p>This is for instance useful to compute histograms.</p>
+<h2 id="example"><a href="#example">Example</a></h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>fastdivide::DividerU64;
+
+<span class="kw">fn </span>histogram(vals: <span class="kw-2">&amp;</span>[u64], min: u64, interval: u64, output: <span class="kw-2">&amp;mut </span>[usize]) {
+
+    <span class="comment">// Preprocessing a datastructure dedicated
+    // to dividing `u64` by `interval`.
+    //
+    // This preprocessing is not cheap.
+    </span><span class="kw">let </span>divide = DividerU64::divide_by(interval);
+
+    <span class="comment">// We reuse the same `Divider` for all of the
+    // values in vals.
+    </span><span class="kw">for </span><span class="kw-2">&amp;</span>val <span class="kw">in </span>vals {
+        <span class="kw">if </span>val &lt; min {
+            <span class="kw">continue</span>;
+        }
+        <span class="kw">let </span>bucket_id = divide.divide(val - min) <span class="kw">as </span>usize;
+        <span class="kw">if </span>bucket_id &lt; output.len() {
+            output[bucket_id <span class="kw">as </span>usize] += <span class="number">1</span>;
+        }
+    }
+}
+
+</code></pre></div>
+</div></details><h2 id="enums" class="small-section-header"><a href="#enums">Enums</a></h2><ul class="item-table"><li><div class="item-name"><a class="enum" href="enum.DividerU64.html" title="enum fastdivide::DividerU64">DividerU64</a></div></li></ul></section></div></main></body></html>

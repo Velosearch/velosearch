@@ -1,0 +1,5 @@
+(function() {var implementors = {
+"datafusion":[],
+"datafusion_physical_expr":[],
+"velosearch":[["impl <a class=\"trait\" href=\"datafusion_physical_expr/physical_expr/trait.PhysicalExpr.html\" title=\"trait datafusion_physical_expr::physical_expr::PhysicalExpr\">PhysicalExpr</a> for <a class=\"struct\" href=\"velosearch/physical_expr/short_circuit_primitives/struct.ShortCircuit.html\" title=\"struct velosearch::physical_expr::short_circuit_primitives::ShortCircuit\">ShortCircuit</a>"],["impl <a class=\"trait\" href=\"datafusion_physical_expr/physical_expr/trait.PhysicalExpr.html\" title=\"trait datafusion_physical_expr::physical_expr::PhysicalExpr\">PhysicalExpr</a> for <a class=\"struct\" href=\"velosearch/physical_expr/boolean_eval/struct.BooleanEvalExpr.html\" title=\"struct velosearch::physical_expr::boolean_eval::BooleanEvalExpr\">BooleanEvalExpr</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

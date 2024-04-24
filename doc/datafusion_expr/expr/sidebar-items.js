@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Expr","GroupingSet"],"struct":["AggregateFunction","Between","BinaryExpr","BooleanQuery","Case","Cast","GetIndexedField","Like","Sort","TryCast","WindowFunction"]};

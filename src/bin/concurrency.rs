@@ -1,6 +1,6 @@
 use std::{env, sync::{atomic::Ordering, Arc}};
 use datafusion::{prelude::*, sql::TableReference, datasource::provider_as_source,arrow::array::UInt64Array, prelude::Expr};
-use fastfull_search::{boolean_parser, jit::AOT_PRIMITIVES, parser, utils::{builder::deserialize_posting_table, Result}, BooleanContext, CONCURRENCY};
+use velosearch::{boolean_parser, jit::AOT_PRIMITIVES, parser, utils::{builder::deserialize_posting_table, Result}, BooleanContext, CONCURRENCY};
 use jemallocator::Jemalloc;
 
 

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["DATAFUSION_VERSION"],"macro":["assert_batches_eq","assert_batches_sorted_eq"],"mod":["avro_to_arrow","catalog","config","dataframe","datasource","error","execution","from_slice","physical_optimizer","physical_plan","prelude","scalar","test_util","variable"]};
