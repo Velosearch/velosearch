@@ -18,15 +18,20 @@
 //! Defines memory-related functions, such as allocate/deallocate/reallocate memory
 //! regions, cache and allocation alignments.
 
-use std::alloc::{handle_alloc_error, Layout};
+use std::alloc::{alloc_zeroed, dealloc, handle_alloc_error, realloc, Layout};
 use std::fmt::{Debug, Formatter};
 use std::panic::RefUnwindSafe;
 use std::ptr::NonNull;
 use std::sync::Arc;
 
+use alloc::alloc;
+use mmap_alloc::MapAlloc;
+
 mod alignment;
 
 pub use alignment::ALIGNMENT;
+
+const MMAP_ALLOC: MapAlloc = MapAlloc::default();
 
 /// Returns an aligned non null pointer similar to [`NonNull::dangling`]
 ///
@@ -66,7 +71,11 @@ pub fn allocate_aligned_zeroed(size: usize) -> NonNull<u8> {
             dangling_ptr()
         } else {
             let layout = Layout::from_size_align_unchecked(size, ALIGNMENT);
+            #[cfg(feature="in_memory")]
             let raw_ptr = std::alloc::alloc_zeroed(layout);
+            #[cfg(feature="larger_than_memory")]
+            let raw_ptr = <&MMAP_ALLOC as Alloc>::alloc_zeroed(layout);
+
             NonNull::new(raw_ptr).unwrap_or_else(|| handle_alloc_error(layout))
         }
     }
@@ -82,10 +91,16 @@ pub fn allocate_aligned_zeroed(size: usize) -> NonNull<u8> {
 /// * size must be the same size that was used to allocate that block of memory,
 pub unsafe fn free_aligned(ptr: NonNull<u8>, size: usize) {
     if size != 0 {
+        #[cfg(feature="in_memory")]
         std::alloc::dealloc(
             ptr.as_ptr() as *mut u8,
             Layout::from_size_align_unchecked(size, ALIGNMENT),
         );
+        #[cfg(feature="large_than_memory")]
+        <&MMAP_ALLOC as Alloc>::dealloc(
+            ptr.as_ptr() as *mut u8, 
+            Layout::from_size_align_unchecked(size, ALIGNMENT),
+        )
     }
 }
 
@@ -114,7 +129,14 @@ pub unsafe fn reallocate(
         return dangling_ptr();
     }
 
+    #[cfg(feature="in_memory")]
     let raw_ptr = std::alloc::realloc(
+        ptr.as_ptr() as *mut u8,
+        Layout::from_size_align_unchecked(old_size, ALIGNMENT),
+        new_size,
+    );
+    #[cfg(feature="larger_than_memory")]
+    let raw_ptr = <&MMAP_ALOC as Alloc>::realloc(
         ptr.as_ptr() as *mut u8,
         Layout::from_size_align_unchecked(old_size, ALIGNMENT),
         new_size,

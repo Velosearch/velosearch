@@ -121,8 +121,8 @@ impl<T: ByteArrayType> GenericByteBuilder<T> {
         let array_builder = ArrayDataBuilder::new(array_type)
             .len(self.len())
             .add_buffer(self.offsets_builder.finish())
-            .add_buffer(self.value_builder.finish())
-            .null_bit_buffer(self.null_buffer_builder.finish());
+            .add_buffer(self.value_builder.finish());
+            // .null_bit_buffer(self.null_buffer_builder.finish());
 
         self.offsets_builder.append(self.next_offset());
         let array_data = unsafe { array_builder.build_unchecked() };

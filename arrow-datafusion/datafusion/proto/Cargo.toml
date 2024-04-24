@@ -40,7 +40,7 @@ default = []
 json = ["pbjson", "serde", "serde_json"]
 
 [dependencies]
-arrow = { git="https://github.com/RTEnzyme/arrow-rs", branch = "columnar4inverted", features = ["prettyprint"] }
+arrow = { path="../../arrow-rs/arrow", features = ["prettyprint"] }
 chrono = { version = "0.4", default-features = false }
 datafusion = { path = "../core", version = "18.0.0" }
 datafusion-common = { path = "../common", version = "18.0.0" }

@@ -34,9 +34,9 @@ path = "examples/avro_sql.rs"
 required-features = ["datafusion/avro"]
 
 [dev-dependencies]
-arrow = { git="https://github.com/RTEnzyme/arrow-rs", branch="columnar4inverted"}
-arrow-flight = { git="https://github.com/RTEnzyme/arrow-rs", branch = "columnar4inverted", features = ["flight-sql-experimental"] }
-arrow-schema = { git="https://github.com/RTEnzyme/arrow-rs", branch="columnar4inverted" }
+arrow = { path="../arrow-rs/arrow" }
+arrow-flight = { path="../arrow-rs/arrow-flight", features = ["flight-sql-experimental"] }
+arrow-schema = { path="../arrow-rs/arrow-schema" }
 async-trait = "0.1.41"
 dashmap = "5.4"
 datafusion = { path = "../datafusion/core" }

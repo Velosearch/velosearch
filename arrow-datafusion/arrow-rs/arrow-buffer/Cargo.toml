@@ -32,6 +32,11 @@ include = [
 edition = "2021"
 rust-version = "1.62"
 
+[features]
+default = ["in_memory"]
+in_memory = []
+larger_than_memory = []
+
 [lib]
 name = "arrow_buffer"
 path = "src/lib.rs"
@@ -40,6 +45,7 @@ bench = false
 [dependencies]
 num = { version = "0.4", default-features = false, features = ["std"] }
 half = { version = "2.1", default-features = false }
+mmap-alloc = "0.2"
 
 [dev-dependencies]
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }

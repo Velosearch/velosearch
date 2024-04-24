@@ -47,8 +47,8 @@ dashmap = "5.5"
 jemallocator = "0.5.4"
 mimalloc = "0.1.39"
 peg = "0.8"
-# roaring = {version="0.10", features = ["serde"]}
 roaring = {path="roaring-rs", features = ["serde"]}
+rkyv = "0.7"
 
 [[bench]]
 name = "arrow_bitwise_and"

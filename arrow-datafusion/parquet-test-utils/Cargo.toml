@@ -25,4 +25,4 @@ edition = "2021"
 [dependencies]
 datafusion = { path = "../datafusion/core" }
 object_store = "0.5.4"
-parquet = { git= "https://github.com/RTEnzyme/arrow-rs", branch = "columnar4inverted" }
+parquet = { path= "../arrow-rs/parquet" }

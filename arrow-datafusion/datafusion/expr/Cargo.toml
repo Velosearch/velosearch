@@ -36,7 +36,7 @@ path = "src/lib.rs"
 
 [dependencies]
 ahash = { version = "0.8", default-features = false, features = ["runtime-rng"] }
-arrow = { git="https://github.com/RTEnzyme/arrow-rs", branch = "columnar4inverted", features = ["prettyprint"] }
+arrow = { path="../../arrow-rs/arrow", features = ["prettyprint"] }
 datafusion-common = { path = "../common", version = "18.0.0" }
 log = "^0.4"
 sqlparser = "0.30"

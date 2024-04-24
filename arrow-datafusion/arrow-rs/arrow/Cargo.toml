@@ -75,6 +75,7 @@ ipc = ["arrow-ipc"]
 json = ["arrow-json"]
 simd = ["arrow-array/simd", "arrow-ord/simd", "arrow-arith/simd"]
 prettyprint = ["comfy-table"]
+larger_than_memory = ["arrow-buffer/larger_than_memory"]
 # The test utils feature enables code used in benchmarks and tests but
 # not the core arrow code itself. Be aware that `rand` must be kept as
 # an optional dependency for supporting compile to wasm32-unknown-unknown
