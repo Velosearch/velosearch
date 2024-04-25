@@ -1,10 +1,10 @@
 use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, cell::RefCell, collections::BTreeMap, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::Arc, time::Instant};
 
 use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch}, common::TermMeta, from_slice::FromSlice};
-use roaring::{bitmap::RankIter, RoaringBitmap};
+use roaring::RoaringBitmap;
 use serde::{Serialize, Deserialize};
 use tracing::{debug, info};
-use crate::{utils::{Result, FastErr, avx512::U64x8}, physical_expr::{BooleanEvalExpr, boolean_eval::{Chunk, TempChunk, freqs_filter}}};
+use crate::{datasources::mmap_table::{PostingColumn, PostingSegment}, physical_expr::{boolean_eval::{freqs_filter, Chunk, TempChunk}, BooleanEvalExpr}, utils::{avx512::U64x8, FastErr, Result}};
 
 
 /// The doc_id range [start, end) Batch range determines the  of relevant batch.
@@ -980,6 +980,97 @@ impl PostingBatchBuilder {
             vec![],
             Arc::new(BatchRange::new(0, 512))
         )
+    }
+
+    pub fn build_mmap_segment(self, _partition_num: usize) -> Result<PostingSegment> {
+        let term_dict = self.term_dict
+            .into_inner();
+        let mut schema_list = Vec::new();
+        let mut postings: Vec<Arc<PostingColumn>> = Vec::new();
+        // let mut freqs = Vec::new();
+        
+        let mut id_num: usize = 0;
+        let mut bitmap_num: usize = 0;
+        let term_num: usize = term_dict.len();
+        for  (k, v) in term_dict.into_iter() {
+                // let mut boundary = vec![0];
+                let mut cnter = 0;
+                let mut batch_num = 0;
+                let mut offset = 0;
+                // let mut binary_buffer: Vec<Vec<u8>> = Vec::new();
+                let mut posting_list = Vec::new();
+                let mut offset_list = vec![offset];
+                let mut buffer: Vec<u16> = Vec::with_capacity(512);
+                // let mut freq_buffer: Vec<u8> = Vec::with_capacity(512);
+                // let mut freqs_vec: Vec<Vec<u8>> = Vec::new();
+
+                let mut byte_num = 0;
+                v.into_iter()
+                .for_each(|(p, _)| {
+                    if p - cnter < 512 {
+                        buffer.push((p - cnter) as u16);
+                        // freq_buffer.push(f);
+                        // freq_num += 1;
+                    } else {
+                        let skip_num = (p - cnter) / 512;
+                        cnter += skip_num * 512;
+                        batch_num += 1;
+                        if buffer.len() > 8 {
+                            bitmap_num += 1;
+                            let mut bitmap: Vec<u64> = vec![0; 8];
+                            for i in &buffer {
+                                let off = *i;
+                                bitmap[(off >> 6) as usize] |= 1 << (off % (1 << 6));
+                            }
+                            byte_num += bitmap.len() * 8;
+                            posting_list.extend_from_slice(unsafe { bitmap.as_slice().align_to::<u8>().1 });
+                            offset += 64;
+                            offset_list.push(offset);
+                        } else if buffer.len() > 0 {
+                            id_num += 1;
+                            posting_list.extend_from_slice(unsafe {
+                                let value = buffer.as_slice().align_to::<u8>();
+                                assert!(value.0.len() == 0 && value.2.len() == 0);
+                                byte_num += value.1.len();
+                                value.1
+                            });
+                            offset += buffer.len() as u32 * 2;
+                            offset_list.push(offset)
+                        }
+                        buffer.clear();
+                        buffer.push((p - cnter) as u16);
+                    }
+                });
+
+                if buffer.len() > 0 {
+                    if buffer.len() > 8 {
+                        let mut bitmap: Vec<u64> = vec![0; 8];
+                        for i in &buffer {
+                            let off = *i;
+                            bitmap[(off >> 6) as usize] |= 1 << (off % (1 << 6));
+                        }
+                        posting_list.extend_from_slice(unsafe { bitmap.as_slice().align_to::<u8>().1 });
+                        offset += 64;
+                        offset_list.push(offset);
+                    } else {
+                        posting_list.extend_from_slice(unsafe {
+                            let value = buffer.as_slice().align_to::<u8>();
+                            assert!(value.0.len() == 0 && value.2.len() == 0);
+                            value.1
+                        });
+                        offset += buffer.len() as u32 * 2;
+                        offset_list.push(offset);
+                    }
+                }
+                schema_list.push(Field::new(k.clone(), DataType::UInt32, false));
+                postings.push(Arc::new(PostingColumn::new(posting_list, offset_list)));
+        }
+        info!("id list size: {:}", id_num);
+        info!("bitmap size: {:}", bitmap_num);
+        info!("term num: {:}", term_num);
+        schema_list.push(Field::new("__id__", DataType::UInt32, false));
+        postings.push(Arc::new(PostingColumn::new(vec![], vec![])));
+        Ok(PostingSegment { posting_lists: postings })
     }
 }
 

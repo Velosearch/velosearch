@@ -1,41 +1,82 @@
-use std::{any::Any, ops::Range, sync::{atomic::{AtomicUsize, Ordering}, Arc}, task::Poll};
+use std::{any::Any, arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, fs::{self, File}, io::Write, ops::Range, path::Path, slice::from_raw_parts, sync::Arc, task::Poll};
 
 use async_trait::async_trait;
 use datafusion::{
-    arrow::{datatypes::{SchemaRef, Schema, Field, DataType}, record_batch::RecordBatch, array::UInt64Array}, 
-    datasource::TableProvider, 
-    logical_expr::TableType, execution::context::SessionState, prelude::Expr, error::{Result, DataFusionError}, 
-    physical_plan::{ExecutionPlan, Partitioning, DisplayFormatType, project_schema, RecordBatchStream, metrics::{ExecutionPlanMetricsSet, MetricsSet}}, common::TermMeta};
-use futures::Stream;
+    arrow::{array::UInt64Array, datatypes::{DataType, Field, Schema, SchemaRef}, record_batch::RecordBatch}, common::TermMeta, datasource::TableProvider, error::{DataFusionError, Result}, execution::context::SessionState, logical_expr::TableType, physical_plan::{metrics::{ExecutionPlanMetricsSet, MetricsSet}, project_schema, DisplayFormatType, ExecutionPlan, Partitioning, RecordBatchStream}, prelude::Expr};
 use adaptive_hybrid_trie::TermIdx;
+use futures::Stream;
+use memmap::{Mmap, MmapOptions};
+use rkyv::{de::deserializers::SharedDeserializeMap, ser::serializers::AllocSerializer, Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
-use serde::{Serialize, ser::SerializeStruct};
-use tracing::{debug, info};
+use tracing::debug;
 
-use crate::{batch::{BatchRange, PostingBatch}, physical_expr::BooleanEvalExpr};
+use crate::{batch::BatchRange, physical_expr::{boolean_eval::{Chunk, TempChunk}, BooleanEvalExpr}};
 
-pub struct PostingTable {
-    schema: SchemaRef,
-    term_idx: Arc<TermIdx<TermMeta>>,
-    postings: Vec<Arc<PostingBatch>>,
-    pub partitions_num: AtomicUsize,
+use super::ExecutorWithMetadata;
+
+#[derive(Archive, Serialize, Deserialize)]
+pub struct PostingColumn {
+    postings: Vec<u8>,
+    offsets: Vec<u32>,
 }
 
-impl PostingTable {
+impl PostingColumn {
+    pub fn new(postings: Vec<u8>, offsets: Vec<u32>) -> Self {
+        Self {
+            postings,
+            offsets,
+        }
+    }
+
+    pub fn value(&self, index: usize) -> &[u8] {
+        let left = self.offsets[index] as usize;
+        let right = self.offsets[index + 1] as usize;
+        &self.postings[left..right]
+    }
+}
+
+#[derive(Archive, Serialize, Deserialize)]
+pub struct PostingSegment {
+    pub posting_lists: Vec<Arc<PostingColumn>>,
+}
+
+pub struct MmapTable {
+    schema: SchemaRef,
+    term_idx: Arc<TermIdx<TermMeta>>,
+    posting_lists: Arc<PostingSegment>,
+    _dump_file: Arc<Mmap>,
+    pub partitions_num: usize,
+}
+
+impl MmapTable {
     pub fn new(
+        path: &Path,
         schema: SchemaRef,
         term_idx: Arc<TermIdx<TermMeta>>,
-        batches: Vec<Arc<PostingBatch>>,
+        segment: PostingSegment,
         _range: &BatchRange,
         partitions_num: usize,
-    ) -> Self {
+    ) -> Result<Self> {
         // construct field map to index the position of the fields in schema
-        Self {
+        let mmap = if fs::metadata(&path).is_ok() {
+            unsafe { MmapOptions::new().map(&File::open(&path)?).unwrap() }
+        } else {
+            let mut file = File::create(path)?;
+            let mut serializer = AllocSerializer::<{ 1024 * 1024 }>::default();
+            let _ = segment.serialize(&mut serializer).unwrap();
+            let data = serializer.into_serializer().into_inner();
+            file.write_all(&data)?;
+            unsafe { MmapOptions::new().map(&file).unwrap() }
+        };
+        let archived = unsafe { rkyv::archived_root::<PostingSegment>(&mmap) };
+        let posting_lists: PostingSegment = archived.deserialize(&mut SharedDeserializeMap::new()).unwrap();
+        Ok(Self {
             schema,
             term_idx,
-            postings: batches,
-            partitions_num: AtomicUsize::new(partitions_num),
-        }
+            posting_lists: Arc::new(posting_lists),
+            _dump_file: Arc::new(mmap),
+            partitions_num: partitions_num,
+        })
     }
 
     #[inline]
@@ -55,35 +96,12 @@ impl PostingTable {
     }
 
     pub fn memory_consumption(&self) -> usize {
-        let mut postings: usize = 0;
-        let mut offsets: usize = 0;
-        let mut all: usize = 0;
-        self.postings.iter()
-            .for_each(|v| {
-                let size = v.memory_consumption();
-                all += size.0;
-                postings += size.1;
-                offsets += size.2;
-            });
-        info!("posting size: {:}", postings);
-        info!("offsets size: {:}", offsets);
-        all
-    }
-}
-
-impl Serialize for PostingTable {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer {
-        let mut state = serializer.serialize_struct("PostingTable", 4)?;
-        state.serialize_field("schema", &self.schema)?;
-        
-        state.end()
+        todo!()
     }
 }
 
 #[async_trait]
-impl TableProvider for PostingTable {
+impl TableProvider for MmapTable {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -105,21 +123,34 @@ impl TableProvider for PostingTable {
         _limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         debug!("PostingTable scan");
-        Ok(Arc::new(PostingExec::try_new(
-            self.postings.clone(), 
-            self.term_idx.clone(),
-            self.schema(), 
-            projection.cloned(),
-            None,
-            vec![],
-            self.partitions_num.load(Ordering::Relaxed),
-        )?))
+        match projection {
+            Some(idx) => {
+                let posting_lists = idx.into_iter()
+                    .map(|i| self.posting_lists.as_ref().posting_lists[*i].clone())
+                    .collect();
+                Ok(Arc::new(MmapExec::try_new(
+                    posting_lists, 
+                    self.term_idx.clone(), 
+                    self.schema.clone(), 
+                    projection.cloned(), 
+                    None, 
+                    vec![], 
+                    self.partitions_num,
+                )?))
+            }
+            None => {
+                Err(DataFusionError::NotImplemented("Don't support scann all posting lists.".to_string()))
+            }
+        }
+        // Ok(Arc::new(MmapExec::try_new(
+            
+        // )?))
     }
 }
 
 #[derive(Clone)]
-pub struct PostingExec {
-    pub partitions: Vec<Arc<PostingBatch>>,
+pub struct MmapExec {
+    posting_lists: Arc<Vec<Arc<PostingColumn>>>,
     pub schema: SchemaRef,
     pub term_idx: Arc<TermIdx<TermMeta>>,
     pub projected_schema: SchemaRef,
@@ -128,13 +159,13 @@ pub struct PostingExec {
     pub is_score: bool,
     pub projected_term_meta: Vec<Option<TermMeta>>,
     pub predicate: Option<BooleanEvalExpr>,
-    pub partitions_num: usize,
     metric: ExecutionPlanMetricsSet,
     pub distri: Vec<Option<Arc<RoaringBitmap>>>,
     pub idx: Vec<Option<u32>>,
+    pub partitions_num: usize,
 }
 
-impl std::fmt::Debug for PostingExec {
+impl std::fmt::Debug for MmapExec {
    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
        write!(f, "partitions: [...]")?;
        write!(f, "schema: {:?}", self.projected_schema)?;
@@ -143,7 +174,7 @@ impl std::fmt::Debug for PostingExec {
    } 
 }
 
-impl ExecutionPlan for PostingExec {
+impl ExecutionPlan for MmapExec {
     /// Return a reference to Any that can be used for downcasting
     fn as_any(&self) -> &dyn Any {
         self
@@ -183,19 +214,13 @@ impl ExecutionPlan for PostingExec {
             context: Arc<datafusion::execution::context::TaskContext>,
         ) -> Result<datafusion::physical_plan::SendableRecordBatchStream> {
         // let default_step_len = *STEP_LEN.lock();
-        const default_step_len: usize = 1024;
-
+        // const default_step_len: usize = 1024;
         let task_len = self.partition_min_range.as_ref().unwrap().len() as usize;
-        // let batch_len = if self.partitions_num * default_step_len > task_len {
-            
-        // } else {
-        //     task_len / self.partitions_num
-        // };
         let batch_len = task_len / self.partitions_num;
-        debug!("Start PostingExec::execute for partition {} of context session_id {} and task_id {:?}", partition, context.session_id(), context.task_id());
+        debug!("Start MmapExec::execute for partition {} of context session_id {} and task_id {:?}", partition, context.session_id(), context.task_id());
         
         Ok(Box::pin(PostingStream::try_new(
-            self.partitions[0].clone(),
+            self.posting_lists.clone(),
             self.projected_schema.clone(),
             self.partition_min_range.as_ref().unwrap().clone(),
             self.distri.clone(),
@@ -214,8 +239,8 @@ impl ExecutionPlan for PostingExec {
         match t {
             DisplayFormatType::Default => {
                 write!(f,
-                    "PostingExec: partition_size={:?}, is_score: {:}, predicate: {:?}",
-                    self.partitions.len(),
+                    "MmapExec: partition_size={:?}, is_score: {:}, predicate: {:?}",
+                    self.partitions_num,
                     self.is_score,
                     self.predicate.as_ref().map(|v| v.predicate.as_ref().map(|v| unsafe { &(*v.get()) })),
                 )
@@ -238,11 +263,11 @@ impl ExecutionPlan for PostingExec {
     // }
 }
 
-impl PostingExec {
+impl MmapExec {
     /// Create a new execution plan for reading in-memory record batches
     /// The provided `schema` shuold not have the projection applied.
     pub fn try_new(
-        partitions: Vec<Arc<PostingBatch>>,
+        posting_lists: Vec<Arc<PostingColumn>>,
         term_idx: Arc<TermIdx<TermMeta>>,
         schema: SchemaRef,
         projection: Option<Vec<usize>>,
@@ -251,14 +276,14 @@ impl PostingExec {
         partitions_num: usize,
     ) -> Result<Self> {
         let projected_schema = project_schema(&schema, projection.as_ref())?;
-        // let (distris, indices ) = projected_term_meta.iter()
-        //     .map(| v| match v {
-        //         Some(v) => (Some(v.valid_bitmap[0].clone()), v.index[0].clone() ),
-        //         None => (None, None),
-        //     })
-        //     .unzip();
+        let (distris, indices ) = projected_term_meta.iter()
+            .map(| v| match v {
+                Some(v) => (Some(v.valid_bitmap[0].clone()), v.index[0].clone() ),
+                None => (None, None),
+            })
+            .unzip();
         Ok(Self {
-            partitions: partitions,
+            posting_lists: Arc::new(posting_lists),
             term_idx,
             schema,
             projected_schema,
@@ -269,13 +294,15 @@ impl PostingExec {
             predicate: None,
             partitions_num,
             metric: ExecutionPlanMetricsSet::new(),
-            distri: vec![],
-            idx: vec![],
+            distri: distris,
+            idx: indices,
         })
     }
+}
 
+impl ExecutorWithMetadata for MmapExec {
     /// Get TermMeta From &[&str]
-    pub fn term_metas_of(&self, terms: &[&str]) -> Vec<Option<TermMeta>> {
+    fn term_metas_of(&self, terms: &[&str]) -> Vec<Option<TermMeta>> {
         let term_idx = self.term_idx.clone();
         terms
             .into_iter()
@@ -290,7 +317,7 @@ impl PostingExec {
     }
 
     /// Get TermMeta From &str
-    pub fn term_meta_of(&self, term: &str) -> Option<TermMeta> {
+    fn term_meta_of(&self, term: &str) -> Option<TermMeta> {
         #[cfg(not(feature="hash_idx"))]
         let meta = self.term_idx.get(term);
         #[cfg(feature="hash_idx")]
@@ -301,7 +328,7 @@ impl PostingExec {
 
 pub struct PostingStream {
     /// Vector of recorcd batches
-    posting_lists:  Arc<PostingBatch>,
+    posting_lists:  Arc<Vec<Arc<PostingColumn>>>,
     /// Schema representing the data
     schema: SchemaRef,
     /// is_score
@@ -327,7 +354,7 @@ pub struct PostingStream {
 impl PostingStream {
     /// Create an iterator for a vector of record batches
     pub fn try_new(
-        data: Arc<PostingBatch>,
+        posting_lists: Arc<Vec<Arc<PostingColumn>>>,
         schema: SchemaRef,
         min_range: Arc<RoaringBitmap>,
         distris: Vec<Option<Arc<RoaringBitmap>>>,
@@ -342,7 +369,7 @@ impl PostingStream {
             .map(|v| v)
             .collect();
         Ok(Self {
-            posting_lists: data,
+            posting_lists,
             schema,
             min_range,
             distris,
@@ -352,7 +379,7 @@ impl PostingStream {
             index: task_range.start,
             task_range,
             empty_batch: RecordBatch::new_empty(Arc::new(Schema::new(vec![Field::new("mask", DataType::UInt64, false)]))),
-            step_length: 1024,
+            step_length: usize::MAX,
         })
     }
 }
@@ -361,43 +388,15 @@ impl Stream for PostingStream {
     type Item = Result<RecordBatch>;
 
     fn poll_next(mut self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
-        let end = self.task_range.end.min(self.min_range.len());
-        if self.index >= end {
+        if self.min_range.len() == 0 {
             return Poll::Ready(None);
         }
-        debug!("index: {:}, task_range: {:?}", self.index, self.task_range);
-        let batch = if self.is_score {
-            let mut cnt = 0;
-            while self.index < end {
-                let res = if self.index + self.step_length >= end {
-                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.schema, &self.indices,  &self.min_range[self.index..end], &self.predicate.as_ref().unwrap())
-                } else {
-                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.schema, &self.indices,  &self.min_range[self.index..(self.index + self.step_length)], &self.predicate.as_ref().unwrap())
-                };
-                self.index += self.step_length;
-                cnt += res.unwrap();
-            }
-            cnt as usize
-        } else {
-            let mut cnt = 0;
-            while self.index < end {
-                let res = if self.index + self.step_length >= end {
-                    self.posting_lists.roaring_predicate(&self.distris, &self.indices, &self.min_range[self.index..end], &self.predicate.as_ref().unwrap())
-                } else {
-                    self.posting_lists.roaring_predicate(&self.distris, &self.indices, &self.min_range[self.index..(self.index+self.step_length)], &self.predicate.as_ref().unwrap())
-                };
-                self.index += self.step_length;
-                cnt += res.unwrap();
-            }
-            cnt
-        };
+        let res = evaluate(&self.posting_lists, &self.distris, &self.indices, &self.min_range, self.predicate.as_ref().unwrap()).unwrap();
         let batch = RecordBatch::try_new(
             Arc::new(Schema::new(vec![Field::new("mask", DataType::UInt64, false)])),
-            vec![
-                Arc::new(UInt64Array::from(vec![batch as u64])),
-            ]
+            vec![Arc::new(UInt64Array::from(vec![res as u64]))],
         )?;
-        // return Poll::Ready(Some(Ok(self.empty_batch.clone())))
+
         return Poll::Ready(Some(Ok(batch)));
     }
 
@@ -413,11 +412,83 @@ impl RecordBatchStream for PostingStream {
     }
 }
 
-pub fn make_posting_schema(fields: Vec<&str>) -> Schema {
-    Schema::new(
-        [fields.into_iter()
-        .map(|f| Field::new(f, DataType::Boolean, false))
-        .collect(), vec![Field::new("__id__", DataType::UInt32, false)]].concat()
-    )
+fn evaluate(
+    posting_lists: &Vec<Arc<PostingColumn>>,
+    distris: &[Option<Arc<RoaringBitmap>>],
+    indices: &[Option<u32>],
+    min_range: &[u32],
+    predicate: &BooleanEvalExpr,
+) -> Result<usize> {
+    let predicate = {
+        match predicate.predicate.as_ref() {
+            Some(predicate) => unsafe {
+                predicate.get().as_ref().unwrap()
+            }
+            None => return Ok(0),
+        }
+    };
+    let mut batches: Vec<Option<Vec<Chunk>>> = Vec::with_capacity(distris.len());
+    debug!("Start select valid batch.");
+    for (term, i) in distris.iter().zip(indices.iter()) {
+        let mut posting = Vec::with_capacity(min_range.len());
+        let batch: &PostingColumn = if let Some(i) = i {
+            &posting_lists[*i as usize]
+        } else {
+            break;
+        };
+        let term = term.as_ref().unwrap();
+        let mut rank_iter = term.rank_iter();
+        debug!("min_range: {:?}", min_range);
+        for &idx in min_range {
+            if term.contains(idx) {
+                let bound_idx: usize = rank_iter.rank(idx);
+                let batch = batch.value(bound_idx - 1);
+                if batch.len() == 64 {
+                    let batch = unsafe {
+                        from_raw_parts(batch.as_ptr() as *const u64, 8)
+                    };
+                    posting.push(Chunk::Bitmap(batch));
+                } else {
+                    let batch = unsafe {
+                        from_raw_parts(batch.as_ptr() as *const u16, batch.len() / 2)
+                    };
+                    posting.push(Chunk::IDs(batch));
+                }
+            } else {
+                posting.push(Chunk::N0NE);
+            }
+        }
+        if posting.len() > 0 {
+            batches.push(Some(posting));
+        } else {
+            batches.push(None);
+        }
+    }
+    let eval = predicate.eval_avx512(&batches, None, true, min_range.len())?;
+    if let Some(e) = eval {
+        let mut accumulator = 0;
+        let mut id_acc = 0;
+        e.into_iter()
+        .enumerate()
+        .for_each(|(n, v)| unsafe {
+            match v {
+                TempChunk::Bitmap(b) => {
+                    let popcnt = _mm512_popcnt_epi64(b);
+                    let cnt = _mm512_reduce_add_epi64(popcnt);
+                    debug!("num: {:}, batch0: {:?}, batch1: {:?}", cnt, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
+                    accumulator += cnt;
+                }
+                TempChunk::IDs(i) => {
+                    debug!("num: {:}, valid: {:?}, batch0: {:?}, batch1: {:?}", i.len(), i, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
+                    id_acc += i.len();
+                }
+                TempChunk::N0NE => {},
+            }
+        });
+        debug!("accumulator: {}", accumulator);
+        // Ok(accumulator as usize + id_acc)
+        Ok(accumulator as usize)
+    } else {
+        Ok(0)
+    }
 }
-
