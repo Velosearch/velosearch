@@ -48,6 +48,7 @@ jemallocator = "0.5.4"
 mimalloc = "0.1.39"
 peg = "0.8"
 roaring = {path="roaring-rs", features = ["serde"]}
+memmap = "0.7"
 rkyv = "0.7"
 
 [[bench]]

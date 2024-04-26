@@ -49,4 +49,4 @@ parquet = { path="../../arrow-rs/parquet", default-features = false, optional = 
 pyo3 = { version = "0.18.0", optional = true }
 sqlparser = "0.30"
 serde = {version = "1.0", features = ["derive", "rc"]}
-roaring = { version="0.10", features = ["serde"]}
+roaring = { path="../../../roaring-rs", features = ["serde"]}

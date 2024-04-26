@@ -986,7 +986,7 @@ impl PostingBatchBuilder {
         let term_dict = self.term_dict
             .into_inner();
         let mut schema_list = Vec::new();
-        let mut postings: Vec<Arc<PostingColumn>> = Vec::new();
+        let mut postings: Vec<PostingColumn> = Vec::new();
         // let mut freqs = Vec::new();
         
         let mut id_num: usize = 0;
@@ -1063,13 +1063,13 @@ impl PostingBatchBuilder {
                     }
                 }
                 schema_list.push(Field::new(k.clone(), DataType::UInt32, false));
-                postings.push(Arc::new(PostingColumn::new(posting_list, offset_list)));
+                postings.push(PostingColumn::new(posting_list, offset_list));
         }
         info!("id list size: {:}", id_num);
         info!("bitmap size: {:}", bitmap_num);
         info!("term num: {:}", term_num);
         schema_list.push(Field::new("__id__", DataType::UInt32, false));
-        postings.push(Arc::new(PostingColumn::new(vec![], vec![])));
+        postings.push(PostingColumn::new(vec![], vec![]));
         Ok(PostingSegment { posting_lists: postings })
     }
 }

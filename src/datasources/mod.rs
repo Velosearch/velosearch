@@ -7,4 +7,6 @@ pub trait ExecutorWithMetadata {
     fn term_metas_of(&self, terms: &[&str]) -> Vec<Option<TermMeta>>;
 
     fn term_meta_of(&self, term: &str) -> Option<TermMeta>;
+
+    fn set_term_meta(&mut self, term_meta: Vec<Option<TermMeta>>);
 }

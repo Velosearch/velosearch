@@ -17,7 +17,7 @@ use datafusion::{
 use futures::{future::BoxFuture, FutureExt};
 use tracing::{debug, trace, info};
 
-use crate::{physical_expr::{boolean_eval::{PhysicalPredicate, Primitives, SubPredicate}, BooleanEvalExpr}, datasources::posting_table::PostingExec};
+use crate::{datasources::{mmap_table::MmapExec, posting_table::PostingExec, ExecutorWithMetadata}, physical_expr::{boolean_eval::{PhysicalPredicate, Primitives, SubPredicate}, BooleanEvalExpr}};
 
 /// Boolean physical query planner that converts a
 /// `LogicalPlan` to an `ExecutionPlan` suitable for execution.
@@ -126,47 +126,88 @@ impl BooleanPhysicalPlanner {
                 LogicalPlan::Boolean(boolean) => {
                     debug!("Create boolean plan");
                     let physical_input = self.create_boolean_plan(&boolean.input, session_state).await?;
-                    let mut posting = physical_input.as_any().downcast_ref::<PostingExec>()
-                        .ok_or(DataFusionError::Plan(format!("The input of Boolean should be PostingTable")))?.to_owned();
-                    
-                    debug!("Create boolean predicate");
-                    let runtime_expr: Arc<dyn PhysicalExpr> = if let Some(ref predicate) = boolean.predicate {
-                        let schema = boolean.input.schema();
-                        let inputs: Vec<&str> = schema.fields().iter().filter(|f| !f.name().starts_with("__NULL__")).map(|f| f.name().as_str()).collect();
-                        let (term2idx,
-                            (term_metas,
-                            term2sel)): (HashMap<&str, usize>, (Vec<Option<TermMeta>>, HashMap<&str, f64>)) = inputs
-                            .into_iter()
-                            .enumerate()
-                            .filter(|(_, s)| *s != "__id__")
-                            .map(|(i, s)| {
-                                let term_meta = posting.term_meta_of(s);
-                                if let Some(term_meta) = term_meta {
-                                    info!("{s} term_meta nums: {:?}", term_meta.nums[0]);
-                                    // debug!("{s} term_meta true count: {:?}", term_meta.distribution[0].true_count());
-                                    let sel = term_meta.selectivity;
-                                    ((s, i), (Some(term_meta), (s, sel)))
-                                } else {
-                                    ((s, i), (None, (s, 0.)))
-                                }
-                            })
-                            .unzip();
-                        posting.projected_term_meta = term_metas;
-                        let builder = PhysicalPredicateBuilder::new(predicate, term2idx, term2sel);
-                        let physical_predicate = builder.build()?;
-                        Arc::new(BooleanEvalExpr::new(physical_predicate))
+                    if let Some(posting)= physical_input.as_any().downcast_ref::<PostingExec>() {
+                        let mut posting = posting.to_owned();
+                        debug!("Create boolean predicate");
+                        let runtime_expr: Arc<dyn PhysicalExpr> = if let Some(ref predicate) = boolean.predicate {
+                            let schema = boolean.input.schema();
+                            let inputs: Vec<&str> = schema.fields().iter().filter(|f| !f.name().starts_with("__NULL__")).map(|f| f.name().as_str()).collect();
+                            let (term2idx,
+                                (term_metas,
+                                term2sel)): (HashMap<&str, usize>, (Vec<Option<TermMeta>>, HashMap<&str, f64>)) = inputs
+                                .into_iter()
+                                .enumerate()
+                                .filter(|(_, s)| *s != "__id__")
+                                .map(|(i, s)| {
+                                    let term_meta = posting.term_meta_of(s);
+                                    if let Some(term_meta) = term_meta {
+                                        info!("{s} term_meta nums: {:?}", term_meta.nums[0]);
+                                        // debug!("{s} term_meta true count: {:?}", term_meta.distribution[0].true_count());
+                                        let sel = term_meta.selectivity;
+                                        ((s, i), (Some(term_meta), (s, sel)))
+                                    } else {
+                                        ((s, i), (None, (s, 0.)))
+                                    }
+                                })
+                                .unzip();
+                            posting.set_term_meta(term_metas);
+                            let builder = PhysicalPredicateBuilder::new(predicate, term2idx, term2sel);
+                            let physical_predicate = builder.build()?;
+                            Arc::new(BooleanEvalExpr::new(physical_predicate))
+                        } else {
+                            unreachable!()
+                        };
+                        
+                        debug!("Optimize predicate on every partition");
+                        // Should Optimize predicate on every partition.
+                        let num_partition = physical_input.output_partitioning().partition_count();
+                        let partition_predicate = (0..num_partition)
+                            .map(|v| (v, runtime_expr.clone()))
+                            .collect();
+                        debug!("Finish creating boolean physical plan. Is_score: {}", boolean.is_score);
+                        Ok(Arc::new(BooleanExec::try_new(partition_predicate, Arc::new(posting), None, boolean.is_score)?))
                     } else {
-                        unreachable!()
-                    };
+                        debug!("Create boolean predicate");
+                        let mut mmep_table = physical_input.as_any().downcast_ref::<MmapExec>().unwrap().to_owned();
+                        let runtime_expr: Arc<dyn PhysicalExpr> = if let Some(ref predicate) = boolean.predicate {
+                            let schema = boolean.input.schema();
+                            let inputs: Vec<&str> = schema.fields().iter().filter(|f| !f.name().starts_with("__NULL__")).map(|f| f.name().as_str()).collect();
+                            let (term2idx,
+                                (term_metas,
+                                term2sel)): (HashMap<&str, usize>, (Vec<Option<TermMeta>>, HashMap<&str, f64>)) = inputs
+                                .into_iter()
+                                .enumerate()
+                                .filter(|(_, s)| *s != "__id__")
+                                .map(|(i, s)| {
+                                    let term_meta = mmep_table.term_meta_of(s);
+                                    if let Some(term_meta) = term_meta {
+                                        info!("{s} term_meta nums: {:?}", term_meta.nums[0]);
+                                        // debug!("{s} term_meta true count: {:?}", term_meta.distribution[0].true_count());
+                                        let sel = term_meta.selectivity;
+                                        ((s, i), (Some(term_meta), (s, sel)))
+                                    } else {
+                                        ((s, i), (None, (s, 0.)))
+                                    }
+                                })
+                                .unzip();
+                            mmep_table.set_term_meta(term_metas);
+                            let builder = PhysicalPredicateBuilder::new(predicate, term2idx, term2sel);
+                            let physical_predicate = builder.build()?;
+                            Arc::new(BooleanEvalExpr::new(physical_predicate))
+                            } else {
+                                unreachable!()
+                            };
+                            
+                            debug!("Optimize predicate on every partition");
+                            // Should Optimize predicate on every partition.
+                            let num_partition = physical_input.output_partitioning().partition_count();
+                            let partition_predicate = (0..num_partition)
+                                .map(|v| (v, runtime_expr.clone()))
+                                .collect();
+                            debug!("Finish creating boolean physical plan. Is_score: {}", boolean.is_score);
+                            Ok(Arc::new(BooleanExec::try_new(partition_predicate, Arc::new(mmep_table), None, boolean.is_score)?))
+                    }
                     
-                    debug!("Optimize predicate on every partition");
-                    // Should Optimize predicate on every partition.
-                    let num_partition = physical_input.output_partitioning().partition_count();
-                    let partition_predicate = (0..num_partition)
-                        .map(|v| (v, runtime_expr.clone()))
-                        .collect();
-                    debug!("Finish creating boolean physical plan. Is_score: {}", boolean.is_score);
-                    Ok(Arc::new(BooleanExec::try_new(partition_predicate, Arc::new(posting), None, boolean.is_score)?))
                 }
                 LogicalPlan::Analyze(a) => {
                     let input = self.create_boolean_plan(&a.input, session_state).await?;

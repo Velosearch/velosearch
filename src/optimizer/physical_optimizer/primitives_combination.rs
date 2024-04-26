@@ -7,7 +7,7 @@ use dashmap::DashSet;
 use datafusion::{physical_optimizer::PhysicalOptimizerRule, physical_plan::{ExecutionPlan, rewrite::TreeNodeRewritable}};
 use tracing::debug;
 
-use crate::{physical_expr::{boolean_eval::{PhysicalPredicate, SubPredicate}, Primitives}, JIT_MAX_NODES, ShortCircuit, datasources::posting_table::PostingExec};
+use crate::{datasources::{mmap_table::MmapExec, posting_table::PostingExec}, physical_expr::{boolean_eval::{PhysicalPredicate, SubPredicate}, Primitives}, ShortCircuit, JIT_MAX_NODES};
 
 /// PrimitivesCombination transform rule that optimizes the combination of 
 /// bitwise primitives and short-circuit primitive.
@@ -31,6 +31,23 @@ impl PhysicalOptimizerRule for PrimitivesCombination {
             if let Some(boolean) = plan.as_any().downcast_ref::<PostingExec>() {
                 // let boolean_eval = boolean.predicate[&0].clone();
                 // let boolean_eval = boolean_eval.as_any().downcast_ref::<BooleanEvalExpr>();
+                match &boolean.predicate {
+                    Some(p) => {
+                        if let Some(ref predicate) = p.predicate {
+                            debug!("optimize posting_exec predicate");
+                            let predicate = predicate.get();
+                            let valid_idx = optimize_predicate_inner(unsafe{predicate.as_mut()}.unwrap());
+                            for i in valid_idx {
+                                p.valid_idx.insert(i);
+                            }
+                            Ok(Some(plan))
+                        } else {
+                            Ok(Some(plan))
+                        }
+                    }
+                    None => Ok(Some(plan))
+                }
+            } else if let Some(boolean) = plan.as_any().downcast_ref::<MmapExec>() {
                 match &boolean.predicate {
                     Some(p) => {
                         if let Some(ref predicate) = p.predicate {

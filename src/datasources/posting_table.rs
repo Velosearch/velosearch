@@ -14,6 +14,8 @@ use tracing::{debug, info};
 
 use crate::{batch::{BatchRange, PostingBatch}, physical_expr::BooleanEvalExpr, CONCURRENCY, STEP_LEN};
 
+use super::ExecutorWithMetadata;
+
 pub struct PostingTable {
     schema: SchemaRef,
     term_idx: Arc<TermIdx<TermMeta>>,
@@ -286,9 +288,11 @@ impl PostingExec {
             idx: vec![],
         })
     }
+}
 
+impl ExecutorWithMetadata for PostingExec {
     /// Get TermMeta From &[&str]
-    pub fn term_metas_of(&self, terms: &[&str]) -> Vec<Option<TermMeta>> {
+    fn term_metas_of(&self, terms: &[&str]) -> Vec<Option<TermMeta>> {
         let term_idx = self.term_idx.clone();
         terms
             .into_iter()
@@ -303,12 +307,16 @@ impl PostingExec {
     }
 
     /// Get TermMeta From &str
-    pub fn term_meta_of(&self, term: &str) -> Option<TermMeta> {
+    fn term_meta_of(&self, term: &str) -> Option<TermMeta> {
         #[cfg(not(feature="hash_idx"))]
         let meta = self.term_idx.get(term);
         #[cfg(feature="hash_idx")]
         let meta = self.term_idx.get(term).cloned();
         meta
+    }
+    
+    fn set_term_meta(&mut self, term_meta: Vec<Option<TermMeta>>) {
+        self.projected_term_meta = term_meta;
     }
 }
 

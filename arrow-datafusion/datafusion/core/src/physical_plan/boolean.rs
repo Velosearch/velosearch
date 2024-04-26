@@ -425,7 +425,7 @@ mod test {
     use datafusion_common::from_slice::FromSlice;
     use itertools::Itertools;
 
-    use super::{filter_batch, pext, filter_batch_with_freqs, avx512_vpopcnt};
+    use super::{filter_batch, pext, filter_batch_with_freqs};
 
     #[test]
     fn test_bitmap_filter() {

@@ -1,4 +1,4 @@
-use std::{any::Any, arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, fs::{self, File}, io::Write, ops::Range, path::Path, slice::from_raw_parts, sync::Arc, task::Poll};
+use std::{any::Any, arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, fs::{self, File, Permissions}, io::Write, ops::Range, path::Path, slice::from_raw_parts, sync::Arc, task::Poll};
 
 use async_trait::async_trait;
 use datafusion::{
@@ -8,7 +8,7 @@ use futures::Stream;
 use memmap::{Mmap, MmapOptions};
 use rkyv::{de::deserializers::SharedDeserializeMap, ser::serializers::AllocSerializer, Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
-use tracing::debug;
+use tracing::{debug, info};
 
 use crate::{batch::BatchRange, physical_expr::{boolean_eval::{Chunk, TempChunk}, BooleanEvalExpr}};
 
@@ -37,7 +37,7 @@ impl PostingColumn {
 
 #[derive(Archive, Serialize, Deserialize)]
 pub struct PostingSegment {
-    pub posting_lists: Vec<Arc<PostingColumn>>,
+    pub posting_lists: Vec<PostingColumn>,
 }
 
 pub struct MmapTable {
@@ -58,18 +58,24 @@ impl MmapTable {
         partitions_num: usize,
     ) -> Result<Self> {
         // construct field map to index the position of the fields in schema
+        println!("{:?}", &segment.posting_lists[1].offsets[0..10]);
         let mmap = if fs::metadata(&path).is_ok() {
             unsafe { MmapOptions::new().map(&File::open(&path)?).unwrap() }
         } else {
             let mut file = File::create(path)?;
-            let mut serializer = AllocSerializer::<{ 1024 * 1024 }>::default();
-            let _ = segment.serialize(&mut serializer).unwrap();
-            let data = serializer.into_serializer().into_inner();
+            // let mut serializer = AllocSerializer::<{ 1024 * 1024 }>::default();
+            // let _ = segment.serialize(&mut serializer).unwrap();
+            // let data = serializer.into_serializer().into_inner();
+            let data = rkyv::to_bytes::<_, 1024>(&segment).unwrap();
             file.write_all(&data)?;
-            unsafe { MmapOptions::new().map(&file).unwrap() }
+            file.flush()?;
+            unsafe { MmapOptions::new().map(&File::options().read(true).open(&path)?).unwrap() }
         };
         let archived = unsafe { rkyv::archived_root::<PostingSegment>(&mmap) };
+        println!("archive mapped file");
+        println!("{:?}", &archived.posting_lists[1].offsets[0..10]);
         let posting_lists: PostingSegment = archived.deserialize(&mut SharedDeserializeMap::new()).unwrap();
+        println!("deserialize segment");
         Ok(Self {
             schema,
             term_idx,
@@ -125,11 +131,11 @@ impl TableProvider for MmapTable {
         debug!("PostingTable scan");
         match projection {
             Some(idx) => {
-                let posting_lists = idx.into_iter()
-                    .map(|i| self.posting_lists.as_ref().posting_lists[*i].clone())
-                    .collect();
+                // let posting_lists = idx.into_iter()
+                //     .map(|i| self.posting_lists.as_ref().posting_lists[*i].clone())
+                //     .collect();
                 Ok(Arc::new(MmapExec::try_new(
-                    posting_lists, 
+                    self.posting_lists.clone(), 
                     self.term_idx.clone(), 
                     self.schema.clone(), 
                     projection.cloned(), 
@@ -150,7 +156,7 @@ impl TableProvider for MmapTable {
 
 #[derive(Clone)]
 pub struct MmapExec {
-    posting_lists: Arc<Vec<Arc<PostingColumn>>>,
+    posting_lists: Arc<PostingSegment>,
     pub schema: SchemaRef,
     pub term_idx: Arc<TermIdx<TermMeta>>,
     pub projected_schema: SchemaRef,
@@ -221,6 +227,7 @@ impl ExecutionPlan for MmapExec {
         
         Ok(Box::pin(PostingStream::try_new(
             self.posting_lists.clone(),
+            self.projection.as_ref().unwrap().clone(),
             self.projected_schema.clone(),
             self.partition_min_range.as_ref().unwrap().clone(),
             self.distri.clone(),
@@ -267,7 +274,7 @@ impl MmapExec {
     /// Create a new execution plan for reading in-memory record batches
     /// The provided `schema` shuold not have the projection applied.
     pub fn try_new(
-        posting_lists: Vec<Arc<PostingColumn>>,
+        posting_lists: Arc<PostingSegment>,
         term_idx: Arc<TermIdx<TermMeta>>,
         schema: SchemaRef,
         projection: Option<Vec<usize>>,
@@ -283,7 +290,7 @@ impl MmapExec {
             })
             .unzip();
         Ok(Self {
-            posting_lists: Arc::new(posting_lists),
+            posting_lists,
             term_idx,
             schema,
             projected_schema,
@@ -324,11 +331,17 @@ impl ExecutorWithMetadata for MmapExec {
         let meta = self.term_idx.get(term).cloned();
         meta
     }
+    
+    fn set_term_meta(&mut self, term_meta: Vec<Option<TermMeta>>) {
+        self.projected_term_meta = term_meta;
+    }
 }
 
 pub struct PostingStream {
     /// Vector of recorcd batches
-    posting_lists:  Arc<Vec<Arc<PostingColumn>>>,
+    posting_lists:  Arc<PostingSegment>,
+    /// Projection
+    projection: Vec<usize>,
     /// Schema representing the data
     schema: SchemaRef,
     /// is_score
@@ -354,7 +367,8 @@ pub struct PostingStream {
 impl PostingStream {
     /// Create an iterator for a vector of record batches
     pub fn try_new(
-        posting_lists: Arc<Vec<Arc<PostingColumn>>>,
+        posting_lists: Arc<PostingSegment>,
+        projection: Vec<usize>,
         schema: SchemaRef,
         min_range: Arc<RoaringBitmap>,
         distris: Vec<Option<Arc<RoaringBitmap>>>,
@@ -370,13 +384,15 @@ impl PostingStream {
             .collect();
         Ok(Self {
             posting_lists,
+            projection,
             schema,
             min_range,
             distris,
             is_score,
             indices,
             predicate,
-            index: task_range.start,
+            // index: task_range.start,
+            index: 0,
             task_range,
             empty_batch: RecordBatch::new_empty(Arc::new(Schema::new(vec![Field::new("mask", DataType::UInt64, false)]))),
             step_length: usize::MAX,
@@ -391,12 +407,18 @@ impl Stream for PostingStream {
         if self.min_range.len() == 0 {
             return Poll::Ready(None);
         }
-        let res = evaluate(&self.posting_lists, &self.distris, &self.indices, &self.min_range, self.predicate.as_ref().unwrap()).unwrap();
+        if self.index > 0 {
+            return Poll::Ready(None);
+        }
+        // let posting_lists = self.projection.iter()
+        //     .map(|p| &self.posting_lists.as_ref().posting_lists[*p])
+        //     .collect();
+        let res = evaluate(&self.posting_lists.as_ref().posting_lists, &self.distris, &self.indices, &self.min_range, self.predicate.as_ref().unwrap()).unwrap();
         let batch = RecordBatch::try_new(
             Arc::new(Schema::new(vec![Field::new("mask", DataType::UInt64, false)])),
             vec![Arc::new(UInt64Array::from(vec![res as u64]))],
         )?;
-
+        self.index += 1;
         return Poll::Ready(Some(Ok(batch)));
     }
 
@@ -413,7 +435,7 @@ impl RecordBatchStream for PostingStream {
 }
 
 fn evaluate(
-    posting_lists: &Vec<Arc<PostingColumn>>,
+    posting_lists: &Vec<PostingColumn>,
     distris: &[Option<Arc<RoaringBitmap>>],
     indices: &[Option<u32>],
     min_range: &[u32],
