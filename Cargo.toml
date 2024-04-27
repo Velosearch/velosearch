@@ -6,9 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [workspace]
 members = ["adaptive_hybrid_trie", "roaring-rs", "FST-rs", "art-rs"]
+exclude = ["arrow-datafusion"]
 
 [features]
-default = ["hash_idx", "hybrid"]
+default = ["hash_idx", "scalar"]
 hash_idx = ["adaptive_hybrid_trie/hash_idx"]
 trie_idx = ["adaptive_hybrid_trie/trie_idx"]
 scalar = []

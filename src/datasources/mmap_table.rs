@@ -95,6 +95,10 @@ impl MmapTable {
         _range: &BatchRange,
         partitions_num: usize,
     ) -> Result<Self> {
+        // println!("archive mapped file");
+        // println!("{:?}", &archived.posting_lists[1].offsets[0..10]);
+        // let posting_lists: PostingSegment = archived.deserialize(&mut SharedDeserializeMap::new()).unwrap();
+        // println!("deserialize segment");
         Ok(Self {
             schema,
             term_idx,
@@ -526,26 +530,27 @@ fn evaluate(
     if let Some(e) = eval {
         let mut accumulator = 0;
         let mut id_acc = 0;
-        e.into_iter()
-        .enumerate()
-        .for_each(|(n, v)| unsafe {
-            match v {
-                TempChunk::Bitmap(b) => {
-                    let popcnt = _mm512_popcnt_epi64(b);
-                    let cnt = _mm512_reduce_add_epi64(popcnt);
-                    debug!("num: {:}, batch0: {:?}, batch1: {:?}", cnt, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
-                    accumulator += cnt;
-                }
-                TempChunk::IDs(i) => {
-                    debug!("num: {:}, valid: {:?}, batch0: {:?}, batch1: {:?}", i.len(), i, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
-                    id_acc += i.len();
-                }
-                TempChunk::N0NE => {},
-            }
-        });
-        debug!("accumulator: {}", accumulator);
+        // e.into_iter()
+        // .enumerate()
+        // .for_each(|(n, v)| unsafe {
+        //     match v {
+        //         TempChunk::Bitmap(b) => {
+        //             let popcnt = _mm512_popcnt_epi64(b);
+        //             let cnt = _mm512_reduce_add_epi64(popcnt);
+        //             debug!("num: {:}, batch0: {:?}, batch1: {:?}", cnt, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
+        //             accumulator += cnt;
+        //         }
+        //         TempChunk::IDs(i) => {
+        //             debug!("num: {:}, valid: {:?}, batch0: {:?}, batch1: {:?}", i.len(), i, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
+        //             id_acc += i.len();
+        //         }
+        //         TempChunk::N0NE => {},
+        //     }
+        // });
+        // debug!("accumulator: {}", accumulator);
         // Ok(accumulator as usize + id_acc)
-        Ok(accumulator as usize)
+        // Ok(accumulator as usize)
+        Ok(0)
     } else {
         Ok(0)
     }

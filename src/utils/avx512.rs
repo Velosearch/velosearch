@@ -1,4 +1,5 @@
-use std::arch::x86_64::{_mm512_and_epi64, __m512i, _mm512_or_epi64, _mm512_loadu_epi64};
+use std::{arch::x86_64::{ __m512i, _mm512_and_epi64, _mm512_loadu_epi64, _mm512_or_epi64}, ptr::read_unaligned};
+
 
 pub union U64x8 {
     pub vector: __m512i,
@@ -59,7 +60,10 @@ pub fn bitwise_and_batch(lhs: &[u64], rhs: &[u64]) -> __m512i {
             l & r
         })
         .collect();
-        unsafe { _mm512_loadu_epi64(res.as_ptr() as *const i64)}
+        // unsafe { _mm512_loadu_epi64(res.as_ptr() as *const i64)}
+        unsafe { 
+            read_unaligned(res.as_ptr() as *const __m512i)
+        }
     } else {
         unsafe {
             let left = _mm512_loadu_epi64(lhs.as_ptr() as *const i64);

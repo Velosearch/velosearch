@@ -223,7 +223,11 @@ impl PhysicalPredicate {
                                         i.into_iter()
                                         .map(|a| match a {
                                                 Chunk::Bitmap(b) => {
-                                                    TempChunk::Bitmap(unsafe { _mm512_loadu_epi64((*b).as_ptr() as *const i64)})
+                                                    if cfg!(feature="scalar") {
+                                                        TempChunk::Bitmap(unsafe {std::ptr::read_unaligned((*b).as_ptr() as *const __m512i)})
+                                                    } else {
+                                                        TempChunk::Bitmap(unsafe { _mm512_loadu_epi64((*b).as_ptr() as *const i64)})
+                                                    }
                                                 }
                                                 Chunk::IDs(ids) => {
                                                     TempChunk::IDs(ids.to_vec())
