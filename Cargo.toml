@@ -84,9 +84,9 @@ harness = false
 #harness = false
 
 [profile.release]
-# lto = "fat"
-# opt-level = 3
-# overflow-checks = false
+ lto = "fat"
+ opt-level = 3
+ overflow-checks = false
 
 [target.x86_64-unknown-linux-gnu]
 linker = "/usr/bin/clang"

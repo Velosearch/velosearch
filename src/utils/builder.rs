@@ -1,7 +1,8 @@
-use std::{collections::HashMap, fs::File, io::{BufReader, BufWriter}, path::{Path, PathBuf}, sync::Arc};
+use std::{collections::HashMap, fs::{self, File}, io::{BufReader, BufWriter}, path::{Path, PathBuf}, sync::Arc};
 
 use adaptive_hybrid_trie::TermIdx;
 use datafusion::{arrow::datatypes::{Schema, Field, DataType}, common::TermMeta};
+use memmap::MmapOptions;
 use roaring::RoaringBitmap;
 use tracing::{info, debug};
 
@@ -163,6 +164,7 @@ pub fn deserialize_posting_table(dump_path: String, partitions_num: usize) -> Op
 pub fn deserialize_mmap_table(dump_path: String, _partitions_num: usize) -> Option<MmapTable> {
     info!("Deserialize data from {:}", dump_path);
     let path = PathBuf::from(dump_path);
+    
     let mut posting_batch: Vec<PostingBatchBuilder>;
     let batch_range: BatchRange;
     let keys: Vec<String>;
@@ -243,6 +245,10 @@ pub fn deserialize_mmap_table(dump_path: String, _partitions_num: usize) -> Opti
     let term_idx = Arc::new(TermIdx { term_map: HashMap::from_iter(keys.into_iter().zip(values.into_iter())) });
 
     info!("finish deserializing index");
+    if fs::metadata(path.join(PathBuf::from("dump.mmap"))).is_ok() {
+        let mmap = Arc::new(unsafe { MmapOptions::new().map(&File::open(path.join(PathBuf::from("dump.mmap"))).unwrap()).unwrap() });
+        return Some(MmapTable::with_mmap(mmap, Arc::new(schema), term_idx, &batch_range, 1).unwrap());
+    }
 
     // posting_batch.bin
     if let Ok(f) = File::open(path.join(PathBuf::from("posting_batch.bin"))) {
@@ -255,5 +261,5 @@ pub fn deserialize_mmap_table(dump_path: String, _partitions_num: usize) -> Opti
     let posting_segment = posting_batch.pop().unwrap().build_mmap_segment(0).unwrap();
 
     Some(MmapTable::new(
-        &Path::new("temp.data"), Arc::new(schema), term_idx, posting_segment, &batch_range, 1).unwrap())
+        &path.join(PathBuf::from("dump.mmap")), Arc::new(schema), term_idx, posting_segment, &batch_range, 1).unwrap())
 }
