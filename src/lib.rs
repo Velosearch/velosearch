@@ -113,9 +113,6 @@ pub struct FastArgs {
     /// file path
     pub path: Vec<String>,
 
-    #[arg(value_enum, long)]
-    pub handler: Handler,
-
     #[arg(short, long)]
     pub partition_num: Option<usize>,
 
@@ -127,15 +124,4 @@ pub struct FastArgs {
 
     #[arg(long, short)]
     pub dump_path: Option<String>,
-}
-
-#[derive(Clone, Copy, PartialEq, PartialOrd, Eq, Ord, ValueEnum, Debug)]
-pub enum Handler {
-   Base,
-   SplitBase,
-   SplitO1,
-   LoadData,
-   BooleanQuery,
-   PostingTable,
-   Tantivy,
 }

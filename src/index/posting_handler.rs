@@ -11,7 +11,6 @@ use tracing::{info, span, Level, debug};
 
 use crate::{utils::{json::{parse_wiki_dir, WikiItem}, builder::{deserialize_posting_table, serialize_term_meta}}, Result, batch::{PostingBatchBuilder, BatchRange, TermMetaBuilder, PostingBatch}, datasources::posting_table::PostingTable, BooleanContext, jit::AOT_PRIMITIVES, boolean_parser, parser};
 
-use super::HandlerT;
 
 pub struct PostingHandler {
     test_case: Vec<String>,
@@ -73,13 +72,12 @@ impl PostingHandler {
 
 }
 
-#[async_trait]
-impl HandlerT for PostingHandler {
+impl PostingHandler {
     fn get_words(&self, _num:u32) -> Vec<String>  {
         self.test_case.clone()
     }
 
-    async fn execute(&mut self) ->  Result<u128> {
+    pub async fn execute(&mut self) ->  Result<u128> {
         rayon::ThreadPoolBuilder::new().num_threads(22).build_global().unwrap();
         let partition_nums = self.partition_nums;
         let ctx = BooleanContext::new();
