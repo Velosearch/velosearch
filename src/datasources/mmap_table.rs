@@ -1,4 +1,4 @@
-use std::{any::Any, arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, fs::{self, File, Permissions}, io::Write, ops::Range, path::Path, slice::from_raw_parts, sync::Arc, task::Poll};
+use std::{any::Any, fs::{self, File}, io::Write, ops::Range, path::Path, slice::from_raw_parts, sync::Arc, task::Poll};
 
 use async_trait::async_trait;
 use datafusion::{
@@ -6,11 +6,11 @@ use datafusion::{
 use adaptive_hybrid_trie::TermIdx;
 use futures::Stream;
 use memmap::{Mmap, MmapOptions};
-use rkyv::{de::deserializers::SharedDeserializeMap, ser::serializers::AllocSerializer, Archive, Deserialize, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
 use roaring::RoaringBitmap;
-use tracing::{debug, info};
+use tracing::debug;
 
-use crate::{batch::BatchRange, physical_expr::{boolean_eval::{Chunk, TempChunk}, BooleanEvalExpr}};
+use crate::{batch::BatchRange, physical_expr::{boolean_eval::Chunk, BooleanEvalExpr}};
 
 use super::ExecutorWithMetadata;
 
@@ -153,7 +153,7 @@ impl TableProvider for MmapTable {
     ) -> Result<Arc<dyn ExecutionPlan>> {
         debug!("PostingTable scan");
         match projection {
-            Some(idx) => {
+            Some(_) => {
                 // let posting_lists = idx.into_iter()
                 //     .map(|i| self.posting_lists.as_ref().posting_lists[*i].clone())
                 //     .collect();
@@ -371,11 +371,11 @@ pub struct PostingStream {
     /// Dump file
     dump_file: Arc<Mmap>,
     /// Projection
-    projection: Vec<usize>,
+    _projection: Vec<usize>,
     /// Schema representing the data
     schema: SchemaRef,
     /// is_score
-    is_score: bool,
+    _is_score: bool,
     /// min_range
     min_range: Vec<u32>,
     /// distris
@@ -387,11 +387,11 @@ pub struct PostingStream {
     /// 
     predicate: Option<BooleanEvalExpr>,
     /// task range
-    task_range: Range<usize>,
+    _task_range: Range<usize>,
     /// empty schema
-    empty_batch: RecordBatch,
+    _empty_batch: RecordBatch,
     /// step length
-    step_length: usize,
+    _step_length: usize,
 }
 
 impl PostingStream {
@@ -416,18 +416,18 @@ impl PostingStream {
         Ok(Self {
             // posting_lists,
             dump_file,
-            projection,
+            _projection: projection,
             schema,
             min_range,
             distris,
-            is_score,
+            _is_score: is_score,
             indices,
             predicate,
             // index: task_range.start,
             index: 0,
-            task_range,
-            empty_batch: RecordBatch::new_empty(Arc::new(Schema::new(vec![Field::new("mask", DataType::UInt64, false)]))),
-            step_length: usize::MAX,
+            _task_range: task_range,
+            _empty_batch: RecordBatch::new_empty(Arc::new(Schema::new(vec![Field::new("mask", DataType::UInt64, false)]))),
+            _step_length: usize::MAX,
         })
     }
 }
@@ -527,9 +527,9 @@ fn evaluate(
         }
     }
     let eval = predicate.eval_avx512(&batches, None, true, min_range.len())?;
-    if let Some(e) = eval {
-        let mut accumulator = 0;
-        let mut id_acc = 0;
+    if let Some(_) = eval {
+        // let mut accumulator = 0;
+        // let mut id_acc = 0;
         // e.into_iter()
         // .enumerate()
         // .for_each(|(n, v)| unsafe {

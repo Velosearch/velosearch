@@ -1,7 +1,7 @@
 use std::arch::x86_64::{_mm512_setzero_si512, _mm512_loadu_si512, _mm512_popcnt_epi64, _mm512_add_epi64, _mm512_reduce_add_epi64};
 
-use datafusion::{physical_plan::Accumulator, error::Result, scalar::ScalarValue, arrow::{array::{ArrayRef, Int64Array, as_boolean_array}, compute::sum}, common::{downcast_value, DataFusionError, cast::as_uint64_array}};
-use tracing::{debug, info};
+use datafusion::{physical_plan::Accumulator, error::Result, scalar::ScalarValue, arrow::array::ArrayRef};
+use tracing::debug;
 
 
 /// Count
@@ -22,7 +22,7 @@ impl Accumulator for CountValid {
         Ok(vec![ScalarValue::Int64(Some(self.count))])
     }
 
-    fn update_batch(&mut self, values: &[ArrayRef]) -> Result<()> {
+    fn update_batch(&mut self, _values: &[ArrayRef]) -> Result<()> {
         // let array = &values[0];
         // let count = avx512_vpopcnt(array.data().buffers()[0].as_slice()) as i64;
         // let count = as_uint64_array(array).unwrap().value(0) as i64;
@@ -32,7 +32,7 @@ impl Accumulator for CountValid {
         Ok(())
     }
 
-    fn retract_batch(&mut self, values: &[ArrayRef]) -> Result<()> {
+    fn retract_batch(&mut self, _values: &[ArrayRef]) -> Result<()> {
         // let array = &values[0];
         // self.count -= avx512_vpopcnt(array.data().buffers()[0].as_slice()) as i64;
         Ok(())
@@ -57,7 +57,7 @@ impl Accumulator for CountValid {
     }
 }
 
-fn avx512_vpopcnt(data: &[u8]) -> u64 {
+fn _avx512_vpopcnt(data: &[u8]) -> u64 {
     const CHUNK_SIZE: usize = 64;
     // Should be the multiply of CHUNK_SIZE
     assert!(data.len() % CHUNK_SIZE == 0, "data len: {:}", data.len());

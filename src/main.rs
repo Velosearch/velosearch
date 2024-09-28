@@ -1,14 +1,14 @@
 use clap::Parser;
 use velosearch::index::PostingHandler;
 use velosearch::{Result, FastArgs};
-use jemallocator::Jemalloc;
+// use jemallocator::Jemalloc;
 use tracing::{info, Level};
 
 // #[global_allocator]
 // static GLOBAL: Jemalloc = Jemalloc;
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt().with_max_level(Level::DEBUG).init();
+    tracing_subscriber::fmt().with_max_level(Level::INFO).init();
     info!("main execution");
     let args = FastArgs::parse();
 

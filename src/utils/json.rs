@@ -9,7 +9,7 @@ use crate::utils::Result;
 #[derive(Serialize, Deserialize)]
 pub struct WikiItem {
     pub id: String,
-    pub text: String,
+    pub content: String,
 }
 
 pub fn parse_wiki_file(path: &Path) -> Result<Vec<WikiItem>> {
@@ -21,7 +21,9 @@ pub fn parse_wiki_file(path: &Path) -> Result<Vec<WikiItem>> {
     .into_iter()
     .map(|l| {
         let s = l.unwrap();
-        serde_json::from_str::<WikiItem>(&s).unwrap()
+        let mut it = serde_json::from_str::<WikiItem>(&s).unwrap();
+        it.content = it.content.to_lowercase();
+        it
     }).collect())
 }
 

@@ -20,13 +20,13 @@ pub mod context;
 pub mod batch;
 pub mod physical_expr;
 use datafusion::prelude::*;
-use jemallocator::Jemalloc;
+// use jemallocator::Jemalloc;
 use tokio::sync::Mutex;
 pub use utils::Result;
 pub use context::BooleanContext;
 pub use optimizer::{BooleanPhysicalPlanner, MinOperationRange, PartitionPredicateReorder, RewriteBooleanPredicate, PrimitivesCombination};
 pub use physical_expr::ShortCircuit;
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use tantivy::tokenizer::{TextAnalyzer, SimpleTokenizer, RemoveLongFilter, LowerCaser};
 use lazy_static::lazy_static;
 use peg;
@@ -94,7 +94,7 @@ peg::parser!{
     }
 }
 
-const JIT_MAX_NODES: usize = 6;
+const JIT_MAX_NODES: usize = 0;
 
 lazy_static!{
     pub static ref STEP_LEN: Mutex<usize> = {

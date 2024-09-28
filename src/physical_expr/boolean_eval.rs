@@ -1,12 +1,12 @@
-use std::{any::Any, arch::x86_64::{__m256i, __m512i, _mm256_load_si256, _mm256_loadu_epi16, _mm512_and_epi64, _mm512_load_epi64, _mm512_loadu_epi64, _mm512_loadu_epi8, _mm512_mask_compressstoreu_epi8, _mm512_or_epi64, _mm_cmpestrm, _mm_extract_epi32, _mm_loadu_epi16, _mm_mask_compressstoreu_epi16, _SIDD_BIT_MASK, _SIDD_CMP_EQUAL_ANY, _SIDD_UWORD_OPS}, cell::SyncUnsafeCell, slice::from_raw_parts, sync::Arc};
+use std::{any::Any, arch::x86_64::{__m512i, _mm512_and_epi64, _mm512_loadu_epi64, _mm512_loadu_epi8, _mm512_mask_compressstoreu_epi8, _mm512_or_epi64, _mm_cmpestrm, _mm_extract_epi32, _mm_loadu_epi16, _mm_mask_compressstoreu_epi16, _SIDD_BIT_MASK, _SIDD_CMP_EQUAL_ANY, _SIDD_UWORD_OPS}, cell::SyncUnsafeCell, sync::Arc};
 
 use dashmap::DashSet;
-use datafusion::{physical_plan::{expressions::{BinaryExpr, Column}, PhysicalExpr, ColumnarValue}, arrow::{datatypes::{Schema, DataType}, record_batch::RecordBatch, array::{UInt64Array, Int8Array, UInt8Array, Array}}, error::DataFusionError, common::{Result, cast::as_uint64_array}};
+use datafusion::{physical_plan::{expressions::{BinaryExpr, Column}, PhysicalExpr, ColumnarValue}, arrow::{datatypes::{Schema, DataType}, record_batch::RecordBatch, array::{UInt64Array, UInt8Array}}, error::DataFusionError, common::{Result, cast::as_uint64_array}};
 use roaring::RoaringBitmap;
 use sorted_iter::{assume::AssumeSortedByItemExt, SortedIterator};
-use tracing::{debug, info};
+use tracing::debug;
 
-use crate::{batch::{BatchFreqs, Freqs}, utils::avx512::{bitwise_and, bitwise_and_batch, bitwise_or, bitwise_or_batch, U64x8}, ShortCircuit};
+use crate::{utils::avx512::{bitwise_and, bitwise_and_batch, bitwise_or, U64x8}, ShortCircuit};
 
 #[derive(Clone, Debug)]
 pub enum Primitives {
@@ -214,7 +214,6 @@ impl PhysicalPredicate {
                                             (TempChunk::N0NE, _) => {
                                                 *a = TempChunk::N0NE
                                             }
-                                            _ => unreachable!(),
                                         }
                                     }
                                 }
@@ -418,129 +417,6 @@ impl PhysicalPredicate {
             }
         }
     }
-
-    // fn eval_tmp(&self, batch: &Vec<Option<Vec<Chunk>>>) -> Result<Option<Arc<Vec<TempChunk>>>> {
-    //     debug!("evaluate batch len: {:}", batch.len());
-
-    //     match self {
-    //         PhysicalPredicate::And { args } => {
-    //             let res = args.into_iter()
-    //                 .map(|e| e.sub_predicate.eval_tmp(batch).unwrap())
-    //                 .reduce(|acc, e| {
-    //                     let (acc, e) = match (acc, e) {
-    //                         (Some(acc), Some(e)) => (acc, e),
-    //                         (_, _) => return None,
-    //                     };
-    //                     let acc = acc.into_iter()
-    //                         .zip(e.into_iter())
-    //                         .map(|(a, b)| {
-    //                             let chunk = match (a, b) {
-    //                                     (TempChunk::Bitmap(a), TempChunk::Bitmap(b)) => {
-    //                                         TempChunk::Bitmap(unsafe { _mm512_and_epi64(a, b)})
-    //                                     }
-    //                                     (TempChunk::Bitmap(ab), TempChunk::IDs(bi)) => {
-    //                                         let mut bb: [u64; 8] = [0; 8];
-    //                                         for b in bi {
-    //                                             bb[(b as usize) >> 8] |= 1 << ((b as usize) % 64);
-    //                                         }
-    //                                         let bb = unsafe { _mm512_loadu_epi64(bb.as_ptr() as *const i64) };
-    //                                         TempChunk::Bitmap(unsafe { _mm512_and_epi64(ab, bb)})
-    //                                     }
-    //                                     (TempChunk::Bitmap(_), TempChunk::N0NE) => TempChunk::N0NE,
-    //                                     (TempChunk::IDs(ai), TempChunk::Bitmap(bb)) => {
-    //                                         let mut ab: [u64; 8] = [0; 8];
-    //                                         for a in ai {
-    //                                             ab[(a as usize) >> 8] |= 1 << ((a as usize) % 64);
-    //                                         }
-    //                                         let ab = unsafe { _mm512_load_epi64(ab.as_ptr() as *const i64)};
-    //                                         TempChunk::Bitmap(unsafe { _mm512_and_epi64(ab, bb) })
-    //                                     }
-    //                                     (TempChunk::IDs(ai), TempChunk::IDs(bi)) => {
-    //                                         TempChunk::IDs(intersect_avx(&ai, &bi))
-    //                                     }
-    //                                     (TempChunk::IDs(_), TempChunk::N0NE) => TempChunk::N0NE,
-    //                                     (TempChunk::N0NE, TempChunk::Bitmap(_)) => TempChunk::N0NE,
-    //                                     (TempChunk::N0NE, TempChunk::IDs(_)) => TempChunk::N0NE,
-    //                                     (TempChunk::N0NE, TempChunk::N0NE) => TempChunk::N0NE,
-    //                                 };
-    //                             chunk
-    //                         })
-    //                         .collect();
-    //                     Some(Arc::new(acc))
-    //                 })
-    //                 .unwrap();
-    //             Ok(res)
-    //         }
-    //         PhysicalPredicate::Or { args } => {
-    //             let res = args.iter()
-    //                 .map(|e| e.sub_predicate.eval_tmp(&batch).unwrap())
-    //                 .reduce(|acc, e| {
-    //                     let (acc, e) = match (acc, e) {
-    //                         (Some(acc), Some(e)) => {
-    //                             (acc, e)
-    //                         }
-    //                         (Some(acc), None) => return Some(acc),
-    //                         (None, e) => return e,
-    //                     };
-    //                     let acc = acc.iter()
-    //                         .zip(e.iter())
-    //                         .map(|(a, b)| {
-    //                             match (a, b) {
-    //                                 (TempChunk::Bitmap(ab), TempChunk::Bitmap(bb)) => {
-    //                                     TempChunk::Bitmap(unsafe { _mm512_or_epi64(*ab, *bb)})
-    //                                 }
-    //                                 (TempChunk::Bitmap(ab), TempChunk::IDs(bi)) => {
-    //                                     let mut ab = unsafe { U64x8 {vector: *ab }.vals };
-    //                                     for &b in bi {
-    //                                         ab[b as usize >> 8] |= 1 << (b as usize % 64);
-    //                                     }
-    //                                     let ab = unsafe { _mm512_load_epi64(ab.as_ptr() as *const i64)};
-    //                                     TempChunk::Bitmap(ab)
-    //                                 }
-    //                                 (a, TempChunk::N0NE) => a.clone(),
-    //                                 (TempChunk::IDs(ai), TempChunk::Bitmap(bb)) => {
-    //                                     let mut bb = unsafe { U64x8 { vector: *bb}.vals };
-    //                                     for &a in ai {
-    //                                         bb[a as usize >> 8] |= 1 << (a as usize % 64);
-    //                                     }
-    //                                     let bb = unsafe { _mm512_load_epi64(bb.as_ptr() as *const i64) };
-    //                                     TempChunk::Bitmap(bb)
-    //                                 }
-    //                                 (TempChunk::IDs(ai), TempChunk::IDs(bi)) => {
-    //                                     let a_iter = ai.into_iter().assume_sorted_by_item();
-    //                                     let b_iter = bi.into_iter().assume_sorted_by_item();
-    //                                     let union_res: Vec<u16> = a_iter.union(b_iter).cloned().collect();
-    //                                     TempChunk::IDs(union_res)
-    //                                 }
-    //                                 (TempChunk::N0NE, b) => b.clone(),
-    //                             }
-    //                         })
-    //                         .collect();
-    //                     Some(Arc::new(acc))
-    //                 })
-    //                 .unwrap();
-    //             Ok(res)
-    //         }
-    //         PhysicalPredicate::Leaf { primitive } => {
-    //             match primitive {
-    //                 Primitives::BitwisePrimitive(_) => todo!(),
-    //                 Primitives::ShortCircuitPrimitive(_) => todo!(),
-    //                 Primitives::ColumnPrimitive(colum) => {
-    //                     let chunk = batch[colum.index()];
-    //                     match chunk {
-    //                         Some(c) => {
-    //                             match c {
-
-    //                             }
-    //                         }
-    //                         None => Ok(None)
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    
-    // }
 }
 
 /// Combined Primitives Expression

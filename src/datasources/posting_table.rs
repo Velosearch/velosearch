@@ -5,14 +5,14 @@ use datafusion::{
     arrow::{datatypes::{SchemaRef, Schema, Field, DataType}, record_batch::RecordBatch, array::UInt64Array}, 
     datasource::TableProvider, 
     logical_expr::TableType, execution::context::SessionState, prelude::Expr, error::{Result, DataFusionError}, 
-    physical_plan::{ExecutionPlan, Partitioning, DisplayFormatType, project_schema, RecordBatchStream, metrics::{ExecutionPlanMetricsSet, MetricsSet}, EmptyRecordBatchStream}, common::TermMeta};
+    physical_plan::{ExecutionPlan, Partitioning, DisplayFormatType, project_schema, RecordBatchStream, metrics::{ExecutionPlanMetricsSet, MetricsSet}}, common::TermMeta};
 use futures::Stream;
 use adaptive_hybrid_trie::TermIdx;
 use roaring::RoaringBitmap;
 use serde::{Serialize, ser::SerializeStruct};
 use tracing::{debug, info};
 
-use crate::{batch::{BatchRange, PostingBatch}, physical_expr::BooleanEvalExpr, CONCURRENCY, STEP_LEN};
+use crate::{batch::{BatchRange, PostingBatch}, physical_expr::BooleanEvalExpr};
 
 use super::ExecutorWithMetadata;
 
@@ -198,7 +198,7 @@ impl ExecutionPlan for PostingExec {
             context: Arc<datafusion::execution::context::TaskContext>,
         ) -> Result<datafusion::physical_plan::SendableRecordBatchStream> {
         // let default_step_len = *STEP_LEN.lock();
-        const default_step_len: usize = 1024;
+        // const default_step_len: usize = 1024;
 
         let task_len = self.partition_min_range.as_ref().unwrap().len() as usize;
         // let batch_len = if self.partitions_num * default_step_len > task_len {
@@ -340,7 +340,7 @@ pub struct PostingStream {
     /// task range
     task_range: Range<usize>,
     /// empty schema
-    empty_batch: RecordBatch,
+    _empty_batch: RecordBatch,
     /// step length
     step_length: usize,
 }
@@ -372,7 +372,7 @@ impl PostingStream {
             predicate,
             index: task_range.start,
             task_range,
-            empty_batch: RecordBatch::new_empty(Arc::new(Schema::new(vec![Field::new("mask", DataType::UInt64, false)]))),
+            _empty_batch: RecordBatch::new_empty(Arc::new(Schema::new(vec![Field::new("mask", DataType::UInt64, false)]))),
             step_length: 1024,
         })
     }
@@ -444,130 +444,4 @@ pub fn make_posting_schema(fields: Vec<&str>) -> Schema {
 
 
 #[cfg(test)]
-mod tests {
-
-    // use datafusion::{
-    //     prelude::SessionContext, 
-    //     arrow::array::{UInt16Array, UInt32Array}, 
-    //     from_slice::FromSlice, common::cast::as_uint32_array, 
-    // };
-    // use futures::StreamExt;
-
-    // use super::*;
-
-    // fn create_posting_table() -> (Arc<Schema>, Arc<BatchRange>, PostingTable) {
-    //     let schema = Arc::new(make_posting_schema(vec!["a", "b", "c", "d"]));
-    //     let range = Arc::new(BatchRange::new(0, 20));
-
-    //     let batch = PostingBatch::try_new(
-    //         schema.clone(),
-    //         vec![
-    //             Arc::new(UInt16Array::from_slice([1, 2, 6, 8, 15])),
-    //             Arc::new(UInt16Array::from_slice([0, 4, 9, 13, 17])),
-    //             Arc::new(UInt16Array::from_slice([3, 7, 11, 17, 19])),
-    //             Arc::new(UInt16Array::from_slice([6, 7, 9, 14, 18])),
-    //             Arc::new(UInt16Array::from_slice([])),
-    //         ],
-    //         range.clone()
-    //     ).expect("Can't try new a PostingBatch");
-
-    //     let term_idx: Arc<TermIdx<TermMeta>> = Arc::new(TermIdx::new(keys, values, skip_length));
-    //     let provider = PostingTable::new(
-    //             schema.clone(),
-    //             term_idx,
-    //             vec![Arc::new(vec![batch])],
-    //             &range
-    //         );
-    //     return (schema, range, provider)
-    // }
-
-    // #[tokio::test]
-    // async fn test_with_projection() -> Result<()> {
-    //     let session_ctx = SessionContext::new();
-    //     let task_ctx = session_ctx.task_ctx();
-    //     let (_, _, provider) = create_posting_table();
-
-    //     let exec = provider
-    //         .scan(&session_ctx.state(), Some(&vec![1, 2]), &[], None)
-    //         .await?;
-
-    //     let mut it = exec.execute(0, task_ctx)?;
-    //     let batch2 = it.next().await.unwrap()?;
-    //     assert_eq!(2, batch2.schema().fields().len());
-    //     assert_eq!("b", batch2.schema().field(0).name());
-    //     assert_eq!("c", batch2.schema().field(1).name());
-    //     assert_eq!(2, batch2.num_columns());
-    //     Ok(())
-    // }
-
-    // #[tokio::test]
-    // async fn test_exec_fold() -> Result<()> {
-    //     let session_ctx = SessionContext::new();
-    //     let task_ctx = session_ctx.task_ctx();
-    //     let (_, _, provider) = create_posting_table();
-
-    //     let exec = provider
-    //         .scan(&session_ctx.state(), Some(&vec![0, 3]), &[], None)
-    //         .await?;
-
-    //     let mut it = exec.execute(0, task_ctx)?;
-    //     let res_batch: RecordBatch = it.next().await.unwrap()?;
-    //     assert_eq!(2, res_batch.schema().fields().len());
-
-    //     let target_res = vec![
-    //         // 1, 2, 6, 8, 15
-    //         UInt32Array::from_slice([0x62810000 as u32]),
-    //         // 6, 7, 9, 14, 18]
-    //         UInt32Array::from_slice([0x03422000 as u32]),
-    //     ];
-    //     res_batch.columns()
-    //     .into_iter()
-    //     .enumerate()
-    //     .for_each(|(i, v)| {
-    //         assert_eq!(&target_res[i], as_uint32_array(v).expect("Can't cast to UIn32Array"));
-    //     });
-
-    //     Ok(())
-    // }
-
-    // #[tokio::test]
-    // async fn simple_boolean_query_without_optimizer() -> Result<()> {
-    //     tracing_subscriber::fmt().with_max_level(Level::DEBUG).init();
-    //     let schema = Arc::new(make_posting_schema(vec!["a", "b", "c", "d"]));
-    //     let range = Arc::new(BatchRange::new(0, 20));
-
-    //     let batch = PostingBatch::try_new(
-    //         schema.clone(),
-    //         vec![
-    //             Arc::new(UInt16Array::from_slice([1, 2, 6, 8, 15])),
-    //             Arc::new(UInt16Array::from_slice([0, 4, 9, 13, 17])),
-    //             Arc::new(UInt16Array::from_slice([3, 7, 11, 17, 19])),
-    //             Arc::new(UInt16Array::from_slice([6, 7, 9, 14, 18])),
-    //             Arc::new(UInt16Array::from_slice([])),
-    //         ],
-    //         range.clone()
-    //     ).expect("Can't try new a PostingBatch");
-
-    //     let session_ctx = SessionContext::new();
-    //     let task_ctx = session_ctx.task_ctx();
-    //     let input = Arc::new(PostingExec::try_new(
-    //         vec![Arc::new(vec![batch])], 
-    //         vec![], 
-    //         schema.clone(), 
-    //         Some(vec![1, 2, 4]),
-    //         None,
-    //     ).unwrap());
-        
-    //     let predicate: Arc<dyn PhysicalExpr> = boolean_query(
-    //         vec![vec![col("a", &schema.clone())?, col("b", &schema)?]],
-    //         &schema,
-    //     )?;
-    //     let predicates = HashMap::from([(0, predicate)]);
-    //     let filter: Arc<dyn ExecutionPlan> = 
-    //         Arc::new(BooleanExec::try_new(predicates, input, None, None).unwrap());
-        
-    //     let stream = filter.execute(0, task_ctx).unwrap();
-    //     debug!("{:?}", collect(stream).await.unwrap()[0]);
-    //     Ok(())
-    // }
-}
+mod tests {}

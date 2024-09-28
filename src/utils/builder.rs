@@ -1,10 +1,10 @@
-use std::{collections::HashMap, fs::{self, File}, io::{BufReader, BufWriter}, path::{Path, PathBuf}, sync::Arc};
+use std::{collections::HashMap, fs::{self, File}, io::{BufReader, BufWriter}, path::PathBuf, sync::Arc};
 
 use adaptive_hybrid_trie::TermIdx;
 use datafusion::{arrow::datatypes::{Schema, Field, DataType}, common::TermMeta};
 use memmap::MmapOptions;
 use roaring::RoaringBitmap;
-use tracing::{info, debug};
+use tracing::info;
 
 use crate::{batch::{BatchRange, PostingBatchBuilder}, datasources::{mmap_table::MmapTable, posting_table::PostingTable}};
 

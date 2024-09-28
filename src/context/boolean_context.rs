@@ -1,20 +1,20 @@
 
-use std::{sync::Arc, collections::{HashSet, BTreeSet}};
+use std::{sync::Arc, collections::BTreeSet};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use datafusion::{
     execution::{context::{SessionState, QueryPlanner}, runtime_env::RuntimeEnv}, 
-    prelude::{SessionConfig, Expr, Column, create_udaf}, sql::TableReference, logical_expr::{LogicalPlanBuilder, LogicalPlan, TableSource, Volatility}, 
+    prelude::{SessionConfig, Expr, Column}, sql::TableReference, logical_expr::{LogicalPlanBuilder, LogicalPlan, TableSource}, 
     datasource::{provider_as_source, TableProvider}, error::DataFusionError, 
     optimizer::OptimizerRule, 
-    physical_optimizer::PhysicalOptimizerRule, scalar::ScalarValue, physical_plan::{PhysicalPlanner, ExecutionPlan}, arrow::datatypes::{Schema, DataType}
+    physical_optimizer::PhysicalOptimizerRule, scalar::ScalarValue, physical_plan::{PhysicalPlanner, ExecutionPlan}, arrow::datatypes::Schema
 };
 use parking_lot::RwLock;
 use tokio::time::Instant;
 use tracing::debug;
 
-use crate::{query::boolean_query::BooleanQuery, utils::FastErr, BooleanPhysicalPlanner, MinOperationRange, RewriteBooleanPredicate, PrimitivesCombination, physical_expr::CountValid};
+use crate::{query::boolean_query::BooleanQuery, utils::FastErr, BooleanPhysicalPlanner, MinOperationRange, RewriteBooleanPredicate};
 use crate::utils::Result;
 
 #[derive(Clone)]
@@ -101,6 +101,7 @@ impl BooleanContext {
         let provider = self.index_provider(index_ref).await?;
         let schema = &provider.schema();
         let project_exprs = [binary_expr_columns(&predicate), vec![Column::from_name("__id__")]].concat();
+        debug!("project exprs: {:?}", project_exprs);
         let project = project_exprs
             .iter()
             .map(|e| schema.index_of(&e.name).unwrap_or(usize::MAX))
@@ -130,6 +131,7 @@ impl BooleanContext {
     ) -> Result<BooleanQuery> {
         debug!("start boolean builder");
         let project_exprs = binary_expr_columns(&predicate);
+        debug!("project exprs: {:?}", project_exprs);
         let mut project: Vec<usize> = project_exprs
             .iter()
             .map(|e| schema.index_of(&e.name).unwrap_or(usize::MAX))

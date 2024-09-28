@@ -1,37 +1,25 @@
 use core::time;
-use std::{cell::RefCell, collections::{BTreeMap, HashMap, HashSet}, fs::File, io::{self, BufRead, BufWriter}, mem::size_of_val, path::PathBuf, sync::Arc};
+use std::{cell::RefCell, collections::{BTreeMap, HashMap}, fs::File, io::BufWriter, path::PathBuf, sync::Arc};
 
-use async_trait::async_trait;
-use datafusion::{sql::TableReference, arrow::datatypes::{Schema, DataType, Field}, datasource::provider_as_source, common::TermMeta};
+use datafusion::{sql::TableReference, arrow::datatypes::{Schema, DataType, Field}, datasource::provider_as_source};
 use adaptive_hybrid_trie::TermIdx;
-use rand::{thread_rng, seq::IteratorRandom};
-use tantivy::tokenizer::{TextAnalyzer, SimpleTokenizer, RemoveLongFilter, LowerCaser, Stemmer};
-use tokio::time::Instant;
+use tantivy::tokenizer::{TextAnalyzer, SimpleTokenizer};
 use tracing::{info, span, Level, debug};
 
 use crate::{utils::{json::{parse_wiki_dir, WikiItem}, builder::{deserialize_posting_table, serialize_term_meta}}, Result, batch::{PostingBatchBuilder, BatchRange, TermMetaBuilder, PostingBatch}, datasources::posting_table::PostingTable, BooleanContext, jit::AOT_PRIMITIVES, boolean_parser, parser};
 
 
 pub struct PostingHandler {
-    test_case: Vec<String>,
-    partition_nums: usize,
     posting_table: Option<PostingTable>,
-    tokenizer: TextAnalyzer,
 }
 
 impl PostingHandler {
     pub fn new(base: String, path: Vec<String>, partition_nums: usize, batch_size: u32, dump_path: Option<String>) -> Self {
         let _ = AOT_PRIMITIVES.len();
-        let tokenizer = TextAnalyzer::from(SimpleTokenizer)
-        .filter(RemoveLongFilter::limit(40))
-        .filter(LowerCaser);
         if let Some(p) = dump_path.clone() {
             if let Some(t) = deserialize_posting_table(p, partition_nums) {
                 return Self {
-                    test_case: vec![],
-                    partition_nums,
                     posting_table: Some(t),
-                    tokenizer,
                 };
             }
         };
@@ -42,68 +30,42 @@ impl PostingHandler {
             .collect();
 
         let doc_len = items.len();
-        let mut ids: Vec<u32> = Vec::new();
-        let mut words: Vec<String> = Vec::new();
-        let mut cnt = 0;
-
-        // items
-        // .into_iter()
-        // .for_each(|e| {
-        //     let WikiItem {id: _, text: w} = e;
-
-        //     let mut stream = tokenizer.token_stream(w.as_str());
-        //     stream.process(&mut |token| {
-        //         ids.push(cnt);
-        //         words.push(token.text.clone());
-        //     });
-        //     cnt += 1;
-        // });
-
-
         let posting_table = to_batch(items, doc_len, partition_nums, batch_size, dump_path);
     
         Self { 
-            test_case: Vec::new(),
-            partition_nums,
             posting_table: Some(posting_table),
-            tokenizer,
         }
     }
 
 }
 
 impl PostingHandler {
-    fn get_words(&self, _num:u32) -> Vec<String>  {
-        self.test_case.clone()
-    }
-
     pub async fn execute(&mut self) ->  Result<u128> {
         rayon::ThreadPoolBuilder::new().num_threads(22).build_global().unwrap();
-        let partition_nums = self.partition_nums;
         let ctx = BooleanContext::new();
         let space = self.posting_table.as_ref().unwrap().memory_consumption();
         info!("space usage: {:}", space);
         ctx.register_index(TableReference::Bare { table: "__table__".into() }, Arc::new(self.posting_table.take().unwrap()))?;
-        let table = ctx.index("__table__").await?;
-        let mut test_iter = self.test_case.clone().into_iter();
         // let file = File::open("cnf_queries.txt")?;
         // let reader = io::BufReader::new(file);
         // 遍历每一行并输出
         // let queries: Vec<String> = reader.lines().into_iter().map(|l| l.unwrap()).collect();
         debug!("======================start!===========================");
-        let mut time_sum = 0;
+        let time_sum = 0;
         debug!("start construct query");
         // let mut time_distri = Vec::new();
         let round = 1;
         let provider = ctx.index_provider("__table__").await?;
         let schema = &provider.schema();
+        debug!("schema exampe: {:?}", schema.as_ref().all_fields());
+        info!("term num: {:?}", schema.as_ref().all_fields().len());
         let table_source = provider_as_source(Arc::clone(&provider));
         println!("start!");
         std::thread::sleep(time::Duration::from_secs(1));
-        let mut len = 0;
+        let len = 0;
         for _ in 0..round {
             // for q in &queries {
-                let q: &str = "10.250.19.102 AND for AND block AND blk_-2488242768015281896 AND delete";
+                let q: &str = "+ccccAMERICA +ssssAMERICA +dddd1997 +ppppMFGR1";
                 let predicate = if let Ok(expr) = parser::boolean(&q) {
                     expr
                 } else {
@@ -165,7 +127,7 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
     docs.into_iter()
     .enumerate()
     .for_each(|(id, e)| {
-        let mut stream = tokenizer.token_stream(&e.text);
+        let mut stream = tokenizer.token_stream(&e.content);
             stream.process(&mut |token| {
                 let word = token.text.clone();
                 let entry = term_idx.entry(word.clone()).or_insert(TermMetaBuilder::new(num_512_partition as usize, partition_nums));

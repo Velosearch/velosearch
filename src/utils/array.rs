@@ -4,7 +4,7 @@ use datafusion::arrow::{array::{BooleanArray, ArrayData}, buffer::Buffer, dataty
 
 
 #[inline]
-pub(crate) fn build_boolean_array(mut res: Vec<u8>, array_len: usize) -> BooleanArray {
+pub(crate) fn _build_boolean_array(mut res: Vec<u8>, array_len: usize) -> BooleanArray {
     let value_buffer = unsafe {
         let buf = Buffer::from_raw_parts(NonNull::new_unchecked(res.as_mut_ptr()), res.len(), res.capacity());
         std::mem::forget(res);

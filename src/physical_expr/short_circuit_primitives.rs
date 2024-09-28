@@ -1,4 +1,4 @@
-use std::{any::Any, ptr::NonNull, sync::Arc, arch::x86_64::{_mm512_loadu_epi64, __m512i, _mm_prefetch, _MM_HINT_T1}};
+use std::{any::Any, ptr::NonNull, sync::Arc, arch::x86_64::{_mm_prefetch, _MM_HINT_T1}};
 
 use datafusion::{physical_plan::{PhysicalExpr, ColumnarValue}, arrow::{datatypes::DataType, record_batch::RecordBatch, array::{BooleanArray, ArrayData}, buffer::Buffer}, error::DataFusionError};
 use tracing::debug;
@@ -74,13 +74,12 @@ impl ShortCircuit {
     }
 
     pub fn eval_avx512(&self, init_v: Option<Vec<TempChunk>>, batches: &Vec<Option<Vec<Chunk>>>, batch_len: usize) -> Vec<TempChunk> {
-        const ZEROS: [u64; 8] = [0; 8];
         debug!("Eval by short_circuit_primitives");
         let mut res: Vec<u64> = vec![0; batch_len * 8];
         
         let mut leak_list: Vec<[u64; 8]> = vec![[0; 8]; batches.len() + 1];
 
-        let mut test: [u64; 8] = [u64::MAX; 8];
+        let test: [u64; 8] = [u64::MAX; 8];
         let batch: Vec<*const u8> = self.batch_idx.iter().enumerate()
             .map(|(n, v)| unsafe { 
                 if let Some(ref c) = batches[*v] {
@@ -164,7 +163,7 @@ impl ShortCircuit {
 
         debug!("end eval");
         (0..batch_len).into_iter()
-        .map(|v| {
+        .map(|_| {
             // TempChunk::Bitmap(unsafe { _mm512_loadu_epi64(res.as_ptr().add(v * 8) as *const i64)})
             TempChunk::N0NE
         })
