@@ -2,7 +2,7 @@ pub mod ast;
 pub mod api;
 pub mod compile;
 pub mod jit;
-use std::{collections::HashMap, fs::File};
+use std::collections::HashMap;
 
 use lazy_static::lazy_static;
 use tracing::{debug, info};
@@ -213,7 +213,6 @@ mod test {
         let test2 = vec![0x11, 0x23];
         let test3 = vec![0x21, 0xFF];
         let test4 = vec![0x21, 0x12];
-        let init_v: Vec<u8> = vec![u8::MAX, 2];
         let batch = vec![
             test1.as_ptr(),
             test2.as_ptr(),
