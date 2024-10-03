@@ -1,6 +1,6 @@
-use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, cell::RefCell, collections::BTreeMap, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::Arc, time::Instant};
+use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, cell::RefCell, collections::BTreeMap, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::{Arc, RwLock}, time::Instant};
 
-use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch}, common::TermMeta, from_slice::FromSlice};
+use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch, bitmap::Bitmap}, common::TermMeta, from_slice::FromSlice};
 use roaring::RoaringBitmap;
 use serde::{Serialize, Deserialize};
 use tracing::{debug, info};
@@ -45,12 +45,13 @@ pub type BatchFreqs = Vec<Freqs>;
 
 /// A batch of Postinglist which contain serveral terms,
 /// which is in range[start, end)
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct PostingBatch {
     schema: TermSchemaRef,
     postings: Vec<Arc<PostingList>>,
     term_freqs: Option<BatchFreqs>,
-    range: Arc<BatchRange>
+    range: Arc<BatchRange>,
+    valid: Arc<RwLock<Bitmap>>
 }
 
 impl PostingBatch {
@@ -64,7 +65,6 @@ impl PostingBatch {
             });
         let freqs = match &self.term_freqs {
             Some(m) => m.iter().map(|v| {
-                // v.data().buffers()[0].len() + v.data().buffers()[1].len()
                 v.get_array_memory_size()
             }).sum::<usize>(),
             None => 0,
@@ -105,11 +105,15 @@ impl PostingBatch {
                 schema.fields().len(),
             )));
         }
+        let valid = Arc::new(
+            RwLock::new(Bitmap::new(range.len() as usize))
+        );
         Ok(Self {
             schema, 
             postings,
             term_freqs,
-            range
+            range,
+            valid
         })  
     }
 
@@ -138,19 +142,8 @@ impl PostingBatch {
             }
         };
         let mut batches: Vec<Option<Vec<Chunk>>> = Vec::with_capacity(distris.len());
-        // let mut rank_iters: Vec<Option<RankIter>> = distris
-        //     .iter()
-        //     .map(|e| {
-        //         match e {
-        //             Some(e) => {
-        //                 Some(e.rank_iter())
-        //             }
-        //             None => None
-        //         }
-        //     })
-        //     .collect();
+        let _valid = self.valid.read().unwrap().clone();
         debug!("Start select valid batch.");
-        debug!("term1: {:?}, term2: {:?}", distris[0],distris[1]);
         for (term, i) in distris.iter().zip(indices.iter()) {
             let mut posting = Vec::with_capacity(min_range.len());
             let batch = if let Some(i) = i {
