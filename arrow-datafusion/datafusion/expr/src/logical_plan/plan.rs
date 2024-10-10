@@ -1526,6 +1526,8 @@ pub struct Boolean {
     pub is_score: bool,
     /// The incoming logical plan
     pub input: Arc<LogicalPlan>,
+    /// Flattend projected terms
+    pub projected_terms: Vec<String>,
 }
 
 impl Boolean {
@@ -1536,8 +1538,17 @@ impl Boolean {
         op_cnt: usize,
         is_score: bool,
         input: Arc<LogicalPlan>,
+        projected_terms: Vec<String>,
     ) -> datafusion_common::Result<Self> {
-        Boolean::try_new_with_predicate(binary_expr, None, expr_cnt, op_cnt, is_score, input)
+        Boolean::try_new_with_predicate(
+            binary_expr,
+            None,
+            expr_cnt,
+            op_cnt,
+            is_score,
+            input,
+            projected_terms,
+        )
     }
 
     /// Create a boolean expression with simplified predicate
@@ -1548,6 +1559,7 @@ impl Boolean {
         op_cnt: usize,
         is_score: bool,
         input: Arc<LogicalPlan>,
+        projected_terms: Vec<String>,
     ) -> datafusion_common::Result<Self> {
         // boolean predicates should not be aliased
         if let Expr::Alias(expr, alias) = binary_expr {
@@ -1558,7 +1570,15 @@ impl Boolean {
             )));
         }
 
-        Ok(Self { binary_expr, predicate, expr_cnt, op_cnt, is_score, input })
+        Ok(Self {
+            binary_expr,
+            predicate,
+            expr_cnt,
+            op_cnt,
+            is_score,
+            input,
+            projected_terms,
+        })
     }
 
     pub fn try_from_plan(plan: &LogicalPlan) -> datafusion_common::Result<&Boolean> {

@@ -55,16 +55,16 @@ pub fn deserialize_posting_table(dump_path: String, partitions_num: usize) -> Op
     info!("Deserialize data from {:}", dump_path);
     let path = PathBuf::from(dump_path);
     let posting_batch: Vec<PostingBatchBuilder>;
-    let batch_range: BatchRange;
+    // let batch_range: BatchRange;
     let keys: Vec<String>;
     let values: Vec<TermMetaTemp>;
     // batch_range.bin
-    if let Ok(f) = File::open(path.join(PathBuf::from("batch_ranges.bin"))) {
-        let reader = BufReader::new(f);
-        batch_range = bincode::deserialize_from(reader).unwrap();
-    } else {
-        return None;
-    }
+    // if let Ok(f) = File::open(path.join(PathBuf::from("batch_ranges.bin"))) {
+    //     let reader = BufReader::new(f);
+    //     batch_range = bincode::deserialize_from(reader).unwrap();
+    // } else {
+    //     return None;
+    // }
     // term_keys.bin
     if let Ok(f) = File::open(path.join(PathBuf::from("term_keys.bin"))) {
         let reader = BufReader::new(f);
@@ -125,8 +125,8 @@ pub fn deserialize_posting_table(dump_path: String, partitions_num: usize) -> Op
     info!("valid bitmap consumption: {:}", bitmap_consumption);
     #[cfg(all(feature = "trie_idx", not(feature = "hash_idx")))]
     let term_idx = Arc::new(TermIdx::new(keys, values, 20));
-    #[cfg(feature = "hash_idx")]
-    let term_idx = Arc::new(TermIdx { term_map: HashMap::from_iter(keys.into_iter().zip(values.into_iter())) });
+    // #[cfg(feature = "hash_idx")]
+    // let term_idx = Arc::new(TermIdx { term_map: HashMap::from_iter(keys.into_iter().zip(values.into_iter())) });
 
     info!("finish deserializing index");
 
@@ -147,7 +147,6 @@ pub fn deserialize_posting_table(dump_path: String, partitions_num: usize) -> Op
     Some(PostingTable::new(
         Arc::new(schema),
         partition_batch,
-        &batch_range,
         partitions_num,
     ))
 }

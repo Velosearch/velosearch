@@ -16,12 +16,17 @@ async fn main() {
         Some(p) => p.parse().unwrap(),
         None => 1,
     };
-    main_inner(args[1].to_owned(), partition_num).await.unwrap();
+    main_inner(args.get(1).cloned(), partition_num).await.unwrap();
 }
 
-async fn main_inner(index_dir: String, partitions_num: usize) -> Result<()> {
-    let posting_table = Arc::new(
-        deserialize_posting_table(index_dir, partitions_num).unwrap());
+async fn main_inner(index_dir: Option<String>, partitions_num: usize) -> Result<()> {
+    let posting_table = match index_dir {
+        Some(dir) => Arc::new(
+            deserialize_posting_table(dir, partitions_num).unwrap()),
+        None => Arc::new(PostingTable::new(
+            Arc::new(Schema::empty()), vec![], 0)),
+    };
+    
     let ctx = BooleanContext::new();
     ctx.register_index(TableReference::Bare { table: "__table__".into() },
         posting_table.clone())?;

@@ -5,13 +5,12 @@ use datafusion::{
     arrow::{datatypes::{SchemaRef, Schema, Field, DataType}, record_batch::RecordBatch, array::UInt64Array}, 
     datasource::TableProvider, 
     logical_expr::TableType, execution::context::SessionState, prelude::Expr, error::{Result, DataFusionError}, 
-    physical_plan::{ExecutionPlan, Partitioning, DisplayFormatType, project_schema, RecordBatchStream, metrics::{ExecutionPlanMetricsSet, MetricsSet}}, common::TermMeta};
+    physical_plan::{ExecutionPlan, Partitioning, DisplayFormatType, RecordBatchStream, metrics::{ExecutionPlanMetricsSet, MetricsSet}, PhysicalExpr}, common::TermMeta};
 use futures::Stream;
 use roaring::RoaringBitmap;
-use serde::{Serialize, ser::SerializeStruct};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
-use crate::{batch::{BatchRange, PostingBatch, PostingBatchBuilder}, physical_expr::BooleanEvalExpr};
+use crate::{batch::{PostingBatch, PostingBatchBuilder}, physical_expr::BooleanEvalExpr};
 
 
 /// The update/delete operations add entries in the `UpdateQueue`.
@@ -80,11 +79,10 @@ impl PostingTable {
     pub fn new(
         schema: SchemaRef,
         batches: Vec<Arc<PostingBatch>>,
-        _range: &BatchRange,
         partitions_num: usize,
     ) -> Self {
         // construct field map to index the position of the fields in schema
-        let doc_id = batches.last().unwrap().range().end();
+        let doc_id = batches.last().map_or(0, |v| v.range().end());
         Self {
             schema,
             postings: RwLock::new(batches),
@@ -168,17 +166,6 @@ impl PostingTable {
     }
 }
 
-impl Serialize for PostingTable {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer {
-        let mut state = serializer.serialize_struct("PostingTable", 4)?;
-        state.serialize_field("schema", &self.schema)?;
-        
-        state.end()
-    }
-}
-
 #[async_trait]
 impl TableProvider for PostingTable {
     fn as_any(&self) -> &dyn Any {
@@ -197,7 +184,7 @@ impl TableProvider for PostingTable {
     async fn scan(
         &self,
         _state: &SessionState,
-        projection: Option<&Vec<usize>>,
+        _projection: Option<&Vec<usize>>,
         _filters: &[Expr],
         _limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
@@ -210,10 +197,8 @@ impl TableProvider for PostingTable {
         let segment_num = postings.len();
         Ok(Arc::new(PostingExec::try_new(
             postings, 
-            self.schema(), 
-            projection.cloned(),
-            None,
-            segment_num
+            segment_num,
+            vec![],
         )?))
     }
 }
@@ -221,23 +206,20 @@ impl TableProvider for PostingTable {
 #[derive(Clone)]
 pub struct PostingExec {
     pub partitions: Vec<Arc<PostingBatch>>,
-    pub schema: SchemaRef,
     pub projected_schema: SchemaRef,
-    pub projection: Option<Vec<usize>>,
-    pub partition_min_range: Option<Arc<RoaringBitmap>>,
     pub is_score: bool,
     pub predicate: Option<BooleanEvalExpr>,
     pub partitions_num: usize,
     metric: ExecutionPlanMetricsSet,
     pub distri: Vec<Option<Arc<RoaringBitmap>>>,
     pub idx: Vec<Option<u32>>,
+    pub projected_terms: Arc<Vec<String>>,
 }
 
 impl std::fmt::Debug for PostingExec {
    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
        write!(f, "partitions: [...]")?;
-       write!(f, "schema: {:?}", self.projected_schema)?;
-       write!(f, "projection: {:?}", self.projection)?;
+       write!(f, "schema: {:?}", self.projected_terms)?;
        write!(f, "is_score: {:}", self.is_score)
    } 
 }
@@ -250,7 +232,7 @@ impl ExecutionPlan for PostingExec {
 
     /// Get the schema for this execution plan
     fn schema(&self) -> SchemaRef {
-        self.projected_schema.clone()
+        Arc::new(Schema::empty())
     }
 
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
@@ -260,7 +242,7 @@ impl ExecutionPlan for PostingExec {
 
     /// Get the output partitioning of this plan
     fn output_partitioning(&self) -> datafusion::physical_plan::Partitioning {
-        Partitioning::UnknownPartitioning(self.partitions_num)
+        Partitioning::UnknownPartitioning(self.partitions.len())
     }
 
     fn output_ordering(&self) -> Option<&[datafusion::physical_expr::PhysicalSortExpr]> {
@@ -281,27 +263,53 @@ impl ExecutionPlan for PostingExec {
             partition: usize,
             context: Arc<datafusion::execution::context::TaskContext>,
         ) -> Result<datafusion::physical_plan::SendableRecordBatchStream> {
-        // let default_step_len = *STEP_LEN.lock();
-        // const default_step_len: usize = 1024;
+        let postings = self.partitions[partition].clone();
+        // Pruning to get the min range
+        let term_stats: Vec<Option<&TermMeta>> = postings.term_metas_of(&self.projected_terms);
+        let invalid = Arc::new(RoaringBitmap::new());
+        let prune_bitmap: Vec<Arc<RoaringBitmap>> = term_stats.iter()
+            .map(|t| {
+                match t {
+                    Some(t) => t.valid_bitmap().clone(),
+                    None => invalid.clone(),
+                }
+            })
+            .collect();
+        let skip_bitmap = match self.predicate.as_ref()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<BooleanEvalExpr>() {
+            Some(p) => {
+                p.eval_bitmap(&prune_bitmap).unwrap()
+            }
+            None => unreachable!("Must have valid predicate.")
+        };
 
-        let task_len = self.partition_min_range.as_ref().unwrap().len() as usize;
-        // let batch_len = if self.partitions_num * default_step_len > task_len {
-            
-        // } else {
-        //     task_len / self.partitions_num
-        // };
-        let batch_len = task_len / self.partitions_num;
+        let (distri, index): (Vec<Option<Arc<RoaringBitmap>>>, Vec<Option<u32>>) = 
+            term_stats.into_iter()
+            .map(|t| {
+                match t {
+                    Some(t) => (Some(t.valid_bitmap().clone()), Some(t.index)),
+                    None => (None, None),
+                }
+            })
+            // .unzip::<Vec<Option<RoaringBitmap>>, Vec<Option<u32>>>();
+            .unzip();
+        
+        let task_len = skip_bitmap.len() as usize;
+        // let batch_len = task_len / self.partitions_num;
         debug!("Start PostingExec::execute for partition {} of context session_id {} and task_id {:?}", partition, context.session_id(), context.task_id());
         
         Ok(Box::pin(PostingStream::try_new(
-            self.partitions[partition].clone(),
+            postings,
             self.projected_schema.clone(),
-            self.partition_min_range.as_ref().unwrap().clone(),
-            self.distri.clone(),
-            self.idx.clone(),
+            skip_bitmap,
+            distri,
+            index,
             self.predicate.clone(),
             self.is_score,
-            (batch_len * partition)..(batch_len * partition + batch_len),
+            // (batch_len * partition)..(batch_len * partition + batch_len),
+            0..task_len
         )?))
     }
 
@@ -336,30 +344,30 @@ impl PostingExec {
     /// The provided `schema` shuold not have the projection applied.
     pub fn try_new(
         partitions: Vec<Arc<PostingBatch>>,
-        schema: SchemaRef,
-        projection: Option<Vec<usize>>,
-        partition_min_range: Option<Arc<RoaringBitmap>>,
         partitions_num: usize,
+        projected_terms: Vec<String>,
     ) -> Result<Self> {
-        let projected_schema = project_schema(&schema, projection.as_ref())?;
+        // let projected_schema = project_schema(&schema, projection.as_ref())?;
         // let (distris, indices ) = projected_term_meta.iter()
         //     .map(| v| match v {
         //         Some(v) => (Some(v.valid_bitmap[0].clone()), v.index[0].clone() ),
         //         None => (None, None),
         //     })
         //     .unzip();
+        let fields: Vec<Field> = projected_terms.iter()
+            .map(|f| Field::new(f.clone(), DataType::Date64, false))
+            .collect();
+        let projected_schema = Arc::new(Schema::new(fields));
         Ok(Self {
             partitions: partitions,
-            schema,
             projected_schema,
-            projection,
-            partition_min_range,
             is_score: false,
             predicate: None,
             partitions_num,
             metric: ExecutionPlanMetricsSet::new(),
             distri: vec![],
             idx: vec![],
+            projected_terms: Arc::new(projected_terms),
         })
     }
 }
@@ -368,7 +376,7 @@ pub struct PostingStream {
     /// Vector of recorcd batches
     posting_lists:  Arc<PostingBatch>,
     /// Schema representing the data
-    schema: SchemaRef,
+    projected_schema: SchemaRef,
     /// is_score
     is_score: bool,
     /// min_range
@@ -393,7 +401,7 @@ impl PostingStream {
     /// Create an iterator for a vector of record batches
     pub fn try_new(
         data: Arc<PostingBatch>,
-        schema: SchemaRef,
+        projected_schema: SchemaRef,
         min_range: Arc<RoaringBitmap>,
         distris: Vec<Option<Arc<RoaringBitmap>>>,
         indices: Vec<Option<u32>>,
@@ -408,7 +416,7 @@ impl PostingStream {
             .collect();
         Ok(Self {
             posting_lists: data,
-            schema,
+            projected_schema,
             min_range,
             distris,
             is_score,
@@ -435,9 +443,9 @@ impl Stream for PostingStream {
             let mut cnt = 0;
             while self.index < end {
                 let res = if self.index + self.step_length >= end {
-                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.schema, &self.indices,  &self.min_range[self.index..end], &self.predicate.as_ref().unwrap())
+                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.projected_schema, &self.indices,  &self.min_range[self.index..end], &self.predicate.as_ref().unwrap())
                 } else {
-                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.schema, &self.indices,  &self.min_range[self.index..(self.index + self.step_length)], &self.predicate.as_ref().unwrap())
+                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.projected_schema, &self.indices,  &self.min_range[self.index..(self.index + self.step_length)], &self.predicate.as_ref().unwrap())
                 };
                 self.index += self.step_length;
                 cnt += res.unwrap();
@@ -474,7 +482,7 @@ impl Stream for PostingStream {
 impl RecordBatchStream for PostingStream {
     /// Get the schema
     fn schema(&self) -> SchemaRef {
-        self.schema.clone()
+        self.projected_schema.clone()
     }
 }
 

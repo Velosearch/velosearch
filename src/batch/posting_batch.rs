@@ -59,6 +59,14 @@ pub struct PostingBatch {
 }
 
 impl PostingBatch {
+    pub fn term_metas_of(&self, terms: &Vec<String>) -> Vec<Option<&TermMeta>> {
+        let mut metas = vec![];
+        for term in terms {
+            metas.push(self.term_idx.get(term));
+        }
+        metas
+    }
+
     pub fn memory_consumption(&self) -> (usize, usize, usize) {
         let mut offset: usize = 0;
         let mut postings: usize = 0;

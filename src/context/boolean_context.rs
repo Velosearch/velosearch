@@ -1,5 +1,5 @@
 
-use std::{sync::Arc, collections::BTreeSet};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -99,19 +99,19 @@ impl BooleanContext {
         let index_ref = index_ref.into();
         let index = index_ref.table().to_owned();
         let provider = self.index_provider(index_ref).await?;
-        let schema = &provider.schema();
+        // let schema = &provider.schema();
         let project_exprs = [binary_expr_columns(&predicate), vec![Column::from_name("__id__")]].concat();
         debug!("project exprs: {:?}", project_exprs);
-        let project = project_exprs
+        let projected_terms = project_exprs
             .iter()
-            .map(|e| schema.index_of(&e.name).unwrap_or(usize::MAX))
+            .map(|e| e.name.to_owned())
             .collect();
         if let Expr::BooleanQuery(expr) = predicate {
             let plan = LogicalPlanBuilder::scan(
                 &index,
                 provider_as_source(Arc::clone(&provider)),
-                Some(project),
-            )?.boolean(Expr::BooleanQuery(expr), is_score)?.build()?;
+                None,
+            )?.boolean(Expr::BooleanQuery(expr), is_score, projected_terms)?.build()?;
             Ok(BooleanQuery::new(
                 plan,
                 self.state(),
@@ -125,27 +125,31 @@ impl BooleanContext {
     pub async fn boolean_with_provider<'a>(
         &self,
         table_source: Arc<dyn TableSource>,
-        schema: &Schema,
+        _schema: &Schema,
         predicate: Expr,
         is_score: bool,
     ) -> Result<BooleanQuery> {
         debug!("start boolean builder");
-        let project_exprs = binary_expr_columns(&predicate);
-        debug!("project exprs: {:?}", project_exprs);
-        let mut project: Vec<usize> = project_exprs
-            .iter()
-            .map(|e| schema.index_of(&e.name).unwrap_or(usize::MAX))
-            .collect::<BTreeSet<usize>>()
-            .into_iter()
-            .collect();
-        project.push(schema.index_of("__id__").unwrap());
+        // let project_exprs = binary_expr_columns(&predicate);
+        // debug!("project exprs: {:?}", project_exprs);
+        // let mut project: Vec<usize> = project_exprs
+        //     .iter()
+        //     .map(|e| schema.index_of(&e.name).unwrap_or(usize::MAX))
+        //     .collect::<BTreeSet<usize>>()
+        //     .into_iter()
+        //     .collect();
+        // project.push(schema.index_of("__id__").unwrap());
         debug!("end project");
         if let Expr::BooleanQuery(expr) = predicate {
+            let projected_terms = boolean_expr_columns(&expr)
+                .iter()
+                .map(|v| v.name.to_owned())
+                .collect();
             let plan = LogicalPlanBuilder::scan(
                 "__table__",
                 table_source,
-                Some(project),
-            )?.boolean(Expr::BooleanQuery(expr), is_score)?.build()?;
+                None,
+            )?.boolean(Expr::BooleanQuery(expr), is_score, projected_terms)?.build()?;
             debug!("end build boolean query");
             Ok(BooleanQuery::new(
                 plan,
@@ -266,4 +270,10 @@ pub fn binary_expr_columns(be: &Expr) -> Vec<Column> {
         Expr::Literal(_) => { Vec::new() },
         _ => unreachable!()
     }
+}
+
+pub fn boolean_expr_columns(be: &datafusion::logical_expr::BooleanQuery) -> Vec<Column> {
+    let mut left_columns = binary_expr_columns(&be.left);
+    left_columns.extend(binary_expr_columns(&be.right));
+    left_columns
 }

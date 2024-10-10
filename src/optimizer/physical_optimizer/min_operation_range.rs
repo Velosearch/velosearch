@@ -6,7 +6,7 @@ use std::sync::Arc;
 use datafusion::{
     physical_optimizer::PhysicalOptimizerRule, 
     physical_plan::{rewrite::{TreeNodeRewriter, RewriteRecursion, TreeNodeRewritable}, 
-    ExecutionPlan, boolean::BooleanExec, PhysicalExpr}, arrow::datatypes::Schema,
+    ExecutionPlan, boolean::BooleanExec, PhysicalExpr}, arrow::datatypes::{Schema, Field, DataType},
 };
 use datafusion::common::Result;
 use tracing::debug;
@@ -47,6 +47,7 @@ struct GetMinRange {
     partition_schema: Option<Arc<Schema>>,
     predicate: Option<Arc<dyn PhysicalExpr>>,
     is_score: bool,
+    projected_terms: Option<Arc<Vec<String>>>,
 }
 
 impl GetMinRange {
@@ -55,6 +56,7 @@ impl GetMinRange {
             partition_schema: None,
             predicate: None,
             is_score: false,
+            projected_terms: None,
         }
     }
 }
@@ -66,9 +68,14 @@ impl TreeNodeRewriter<Arc<dyn ExecutionPlan>> for GetMinRange {
         let any_node = node.as_any();
         if let Some(boolean) = any_node.downcast_ref::<BooleanExec>() {
             debug!("Pre_visit BooleanExec");
-            self.partition_schema = Some(boolean.input.schema().clone());
+            let fields: Vec<Field> = boolean.projected_terms.iter()
+                .map(|f| Field::new(f.clone(), DataType::Date64, false))
+                .collect();
+            let projected_schema = Arc::new(Schema::new(fields));
+            self.partition_schema = Some(projected_schema);
             self.predicate = Some(boolean.predicate().clone());
             self.is_score = boolean.is_score;
+            self.projected_terms = Some(boolean.projected_terms.clone());
             Ok(RewriteRecursion::Continue)
         } else if let Some(_posting) = any_node.downcast_ref::<PostingExec>(){
             debug!("Pre_visit PostingExec");
@@ -208,6 +215,7 @@ impl TreeNodeRewriter<Arc<dyn ExecutionPlan>> for GetMinRange {
                 .clone()
             );
             exec.projected_schema = self.partition_schema.as_ref().unwrap().clone();
+            exec.projected_terms = self.projected_terms.as_ref().unwrap().clone();
             let exec = Arc::new(exec);
             Ok(exec)
         }else if let Some(posting) = node.as_any().downcast_ref::<MmapExec>() {

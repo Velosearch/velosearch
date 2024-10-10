@@ -47,6 +47,7 @@ impl OptimizerRule for RewritePredicateCNF {
                     0,
                     boolean.is_score,
                     boolean.input.clone(),
+                    boolean.projected_terms.clone(),
                 )?)))
             }
             _ => Ok(None)

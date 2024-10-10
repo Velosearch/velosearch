@@ -544,7 +544,7 @@ pub fn from_plan(
                 Arc::new(inputs[0].clone()),
             )?))
         }
-        LogicalPlan::Boolean { .. } => {
+        LogicalPlan::Boolean(boolean) => {
             assert_eq!(1, expr.len());
             let predicate = expr[0].clone();
 
@@ -554,6 +554,7 @@ pub fn from_plan(
                 0,
                 false,
                 Arc::new(inputs[0].clone()),
+                boolean.projected_terms.clone(),
             )?))
         }
         LogicalPlan::Repartition(Repartition {

@@ -244,7 +244,6 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
     PostingTable::new(
         Arc::new(schema),
         partition_batch,
-        &BatchRange::new(0, (num_512_partition * batch_size) as u32),
         1,
     )
 }

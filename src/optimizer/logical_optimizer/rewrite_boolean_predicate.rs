@@ -141,6 +141,7 @@ impl OptimizerRule for RewriteBooleanPredicate {
                     rewritten_predicate.2,
                     boolean.is_score,
                     boolean.input.clone(),
+                    boolean.projected_terms.clone(),
                 )?)))
             },
             _ => Ok(None),

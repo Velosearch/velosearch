@@ -130,8 +130,7 @@ impl BooleanPhysicalPlanner {
                         let posting = posting.to_owned();
                         debug!("Create boolean predicate");
                         let runtime_expr: Arc<dyn PhysicalExpr> = if let Some(ref predicate) = boolean.predicate {
-                            let schema = boolean.input.schema();
-                            let inputs: Vec<&str> = schema.fields().iter().filter(|f| !f.name().starts_with("__NULL__")).map(|f| f.name().as_str()).collect();
+                            let inputs: Vec<&str> = boolean.projected_terms.iter().map(String::as_str).collect();
                             let (term2idx, term2sel): (HashMap<&str, usize>, HashMap<&str, f64>) = inputs
                                 .into_iter()
                                 .enumerate()
@@ -149,12 +148,10 @@ impl BooleanPhysicalPlanner {
                         
                         debug!("Optimize predicate on every partition");
                         // Should Optimize predicate on every partition.
-                        let num_partition = physical_input.output_partitioning().partition_count();
-                        let partition_predicate = (0..num_partition)
-                            .map(|v| (v, runtime_expr.clone()))
-                            .collect();
+                        // let num_partition = physical_input.output_partitioning().partition_count();
+                        let partition_predicate = runtime_expr;
                         debug!("Finish creating boolean physical plan. Is_score: {}", boolean.is_score);
-                        Ok(Arc::new(BooleanExec::try_new(partition_predicate, Arc::new(posting), None, boolean.is_score)?))
+                        Ok(Arc::new(BooleanExec::try_new(partition_predicate, Arc::new(posting), None, boolean.is_score, Arc::new(boolean.projected_terms.clone()))?))
                     } else {
                         debug!("Create boolean predicate");
                         let mmep_table = physical_input.as_any().downcast_ref::<MmapExec>().unwrap().to_owned();
@@ -179,12 +176,9 @@ impl BooleanPhysicalPlanner {
                             
                             debug!("Optimize predicate on every partition");
                             // Should Optimize predicate on every partition.
-                            let num_partition = physical_input.output_partitioning().partition_count();
-                            let partition_predicate = (0..num_partition)
-                                .map(|v| (v, runtime_expr.clone()))
-                                .collect();
+                            let partition_predicate = runtime_expr;
                             debug!("Finish creating boolean physical plan. Is_score: {}", boolean.is_score);
-                            Ok(Arc::new(BooleanExec::try_new(partition_predicate, Arc::new(mmep_table), None, boolean.is_score)?))
+                            Ok(Arc::new(BooleanExec::try_new(partition_predicate, Arc::new(mmep_table), None, boolean.is_score, Arc::new(boolean.projected_terms.clone()))?))
                     }
                     
                 }

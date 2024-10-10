@@ -320,7 +320,11 @@ impl LogicalPlanBuilder {
     }
 
     /// Apply a boolean query
-    pub fn boolean(self, expr: impl Into<Expr>, is_score: bool) -> Result<Self> {
+    pub fn boolean(
+        self,
+        expr: impl Into<Expr>,
+        is_score: bool,
+        projected_terms: Vec<String>) -> Result<Self> {
         debug!("Apply a boolean query");
         // let expr = normalize_col(expr.into(), &self.plan)?;
         Ok(Self::from(LogicalPlan::Boolean(Boolean::try_new(
@@ -329,6 +333,7 @@ impl LogicalPlanBuilder {
             0,
             is_score,
             Arc::new(self.plan),
+            projected_terms,
         )?)))
     }
 

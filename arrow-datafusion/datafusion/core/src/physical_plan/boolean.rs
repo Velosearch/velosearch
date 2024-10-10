@@ -38,7 +38,7 @@ use super::{ExecutionPlan, metrics::{ExecutionPlanMetricsSet, MetricsSet, Baseli
 #[derive(Debug)]
 pub struct BooleanExec {
     /// The expression to filter on every partition
-    pub predicate: HashMap<usize, Arc<dyn PhysicalExpr>>,
+    pub predicate: Arc<dyn PhysicalExpr>,
     /// The input plan
     pub input: Arc<dyn ExecutionPlan>,
     /// Execution metrics
@@ -47,15 +47,18 @@ pub struct BooleanExec {
     pub terms_stats: Option<Vec<Option<TermMeta>>>,
     /// Is score
     pub is_score: bool,
+    /// projected terms
+    pub projected_terms: Arc<Vec<String>>,
 }
 
 impl BooleanExec {
     /// Create a BooleanExec on an input
     pub fn try_new(
-        predicate: HashMap<usize, Arc<dyn PhysicalExpr>>,
+        predicate: Arc<dyn PhysicalExpr>,
         input: Arc<dyn ExecutionPlan>,
         terms_stats: Option<Vec<Option<TermMeta>>>,
         is_score: bool,
+        projected_terms: Arc<Vec<String>>,
     ) -> Result<Self> {
         Ok(Self {
             predicate,
@@ -63,12 +66,13 @@ impl BooleanExec {
             metrics: ExecutionPlanMetricsSet::new(),
             terms_stats,
             is_score,
+            projected_terms,
         })
     }
 
     /// The expression to filter on. This expression must evaluate to a boolean value.
-    pub fn predicate_of(&self, partition: usize) -> &Arc<dyn PhysicalExpr> {
-        &self.predicate.get(&partition).unwrap()
+    pub fn predicate_of(&self, _partition: usize) -> &Arc<dyn PhysicalExpr> {
+        &self.predicate
     }
 
     /// The expression to filter on.
@@ -116,6 +120,7 @@ impl ExecutionPlan for BooleanExec {
             children[0].clone(),
             self.terms_stats.to_owned(),
             self.is_score,
+            self.projected_terms.clone(),
         )?))
     }
 
@@ -140,7 +145,7 @@ impl ExecutionPlan for BooleanExec {
         let baseline_metrics = BaselineMetrics::new(&self.metrics, partition);
         Ok(Box::pin(BooleanExecStream {
             schema: self.input.schema(),
-            predicate: self.predicate[&partition].clone(),
+            predicate: self.predicate.clone(),
             input: self.input.execute(partition, context)?,
             baseline_metrics,
             is_score: self.is_score,
@@ -336,6 +341,7 @@ const fn from_u32x16(vals: [u32; 16]) -> __m512i {
 }
 
 #[inline]
+#[allow(unused)]
 fn filter_batch(
     record_batch: &RecordBatch,
     predicate: &BooleanArray,
