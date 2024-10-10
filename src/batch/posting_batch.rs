@@ -161,11 +161,11 @@ impl PostingBatch {
             };
             let term = term.as_ref().unwrap();
             let mut rank_iter = term.rank_iter();
-            debug!("min_range: {:?}", min_range);
+            // debug!("min_range: {:?}", min_range);
             for &idx in min_range {
                 if term.contains(idx) {
                     let bound_idx: usize = rank_iter.rank(idx);
-                    debug!("bound_idx: {:}, real: {:}, idx: {:}, i: {:}", bound_idx, term.rank(idx), idx, i.unwrap());
+                    // debug!("bound_idx: {:}, real: {:}, idx: {:}, i: {:}", bound_idx, term.rank(idx), idx, i.unwrap());
                     let batch = batch.value(bound_idx - 1);
                     if batch.len() == 64 {
                         let batch = unsafe {
@@ -204,11 +204,11 @@ impl PostingBatch {
                     TempChunk::Bitmap(b) => {
                         let popcnt = _mm512_popcnt_epi64(b);
                         let cnt = _mm512_reduce_add_epi64(popcnt);
-                        debug!("num: {:}, batch0: {:?}, batch1: {:?}", cnt, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
+                        // debug!("num: {:}, batch0: {:?}, batch1: {:?}", cnt, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
                         accumulator += cnt;
                     }
                     TempChunk::IDs(i) => {
-                        debug!("num: {:}, valid: {:?}, batch0: {:?}, batch1: {:?}", i.len(), i, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
+                        // debug!("num: {:}, valid: {:?}, batch0: {:?}, batch1: {:?}", i.len(), i, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
                         id_acc += i.len();
                     }
                     TempChunk::N0NE => {},
@@ -216,7 +216,7 @@ impl PostingBatch {
             });
             debug!("accumulator: {}", accumulator);
             // Ok(accumulator as usize + id_acc)
-            Ok(duration as usize)
+            Ok(accumulator as usize + id_acc)
         } else {
             Ok(0)
         }

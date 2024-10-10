@@ -190,11 +190,11 @@ impl TreeNodeRewriter<Arc<dyn ExecutionPlan>> for GetMinRange {
             debug!("is_score: {}", self.is_score);
             exec.is_score = self.is_score;
             let min_range_len = min_range.as_ref().unwrap().len() as usize;
-            exec.partitions_num = if exec.partitions_num * 512 > min_range_len {
-                (min_range_len + 1024) / 1024
-            } else {
-                exec.partitions_num
-            };
+            // exec.partitions_num = if exec.partitions_num * 512 > min_range_len {
+            //     (min_range_len + 1024) / 1024
+            // } else {
+            //     exec.partitions_num
+            // };
             let (distris, indices) = exec.projected_term_meta.iter()
             .map(| v| match v {
                 Some(v) => (Some(v.valid_bitmap[0].clone()), v.index[0].clone() ),

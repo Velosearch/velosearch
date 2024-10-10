@@ -29,7 +29,7 @@ use arrow::record_batch::RecordBatch;
 use datafusion_common::Result;
 use datafusion_physical_expr::{AggregateExpr, PhysicalExpr};
 use futures::stream::BoxStream;
-use log::debug;
+
 use std::sync::Arc;
 use std::task::{Context, Poll};
 

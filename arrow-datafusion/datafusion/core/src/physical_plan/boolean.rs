@@ -18,7 +18,7 @@
 //! BooleanExec evaluates a boolean_query predicate against all input batches to determine
 //! which rows to include in its output batches
 
-use std::{sync::Arc, pin::Pin, task::{Poll, Context}, collections::HashMap, arch::x86_64::{__m512i, _mm512_mask_compressstoreu_epi32, _mm512_loadu_epi8, _mm512_mask_compressstoreu_epi8, _pext_u64, _mm512_setzero_si512, _mm512_loadu_si512, _mm512_popcnt_epi64, _mm512_add_epi64, _mm512_reduce_add_epi64}};
+use std::{sync::Arc, pin::Pin, task::{Poll, Context}, collections::HashMap, arch::x86_64::{__m512i, _mm512_mask_compressstoreu_epi32, _mm512_loadu_epi8, _mm512_mask_compressstoreu_epi8, _pext_u64}};
 
 use crate::error::Result;
 use arrow::{record_batch::RecordBatch, datatypes::{SchemaRef, DataType, Field, Schema}, array::{BooleanArray, UInt32Array, ArrayRef, Array, as_list_array, UInt8Array, UInt64Array}, error::ArrowError};
@@ -26,7 +26,7 @@ use datafusion_common::cast::{as_boolean_array, as_uint32_array, as_uint64_array
 use datafusion_physical_expr::{PhysicalExpr, AnalysisContext};
 use futures::{StreamExt, Stream};
 use itertools::Itertools;
-use tracing::{debug, info};
+use tracing::debug;
 use datafusion_common::TermMeta;
 
 use super::{ExecutionPlan, metrics::{ExecutionPlanMetricsSet, MetricsSet, BaselineMetrics}, DisplayFormatType, SendableRecordBatchStream, RecordBatchStream};

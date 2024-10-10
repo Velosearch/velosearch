@@ -8,6 +8,7 @@ pub type TermIdx<T> = HashTermIdx<T>;
 #[cfg(all(feature = "trie_idx", not(feature = "hash_idx")))]
 pub type  TermIdx<T> = ah_trie::AHTrie<T>;
 
+#[derive(Debug)]
 pub struct HashTermIdx<T> {
     pub term_map: HashMap<String, T>
 }

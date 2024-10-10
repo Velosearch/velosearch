@@ -35,7 +35,7 @@ use datafusion_physical_expr::expressions::Column;
 use datafusion_physical_expr::{
     expressions, AggregateExpr, PhysicalExpr, PhysicalSortExpr,
 };
-use log::debug;
+
 use std::any::Any;
 use std::collections::HashMap;
 

@@ -210,14 +210,11 @@ impl TableProvider for PostingTable {
     ) -> Result<Arc<dyn ExecutionPlan>> {
         debug!("PostingTable scan");
         let posting_guard = self.postings.read().await;
-        let postings: Vec<Arc<PostingBatch>> = match projection {
-            Some(v) => v.into_iter()
-                .map(|i| posting_guard[*i].clone())
-                .collect(),
-            None => posting_guard.iter()
-                .map(|i| i.clone())
-                .collect(),
-        };
+        // posting checkpoint.
+        let postings: Vec<Arc<PostingBatch>> = posting_guard.iter()
+            .map(|i| i.clone())
+            .collect();
+        let segment_num = postings.len();
         Ok(Arc::new(PostingExec::try_new(
             postings, 
             self.term_idx.clone(),
@@ -225,7 +222,7 @@ impl TableProvider for PostingTable {
             projection.cloned(),
             None,
             vec![],
-            self.partitions_num.load(Ordering::Relaxed),
+            segment_num
         )?))
     }
 }
@@ -308,7 +305,7 @@ impl ExecutionPlan for PostingExec {
         debug!("Start PostingExec::execute for partition {} of context session_id {} and task_id {:?}", partition, context.session_id(), context.task_id());
         
         Ok(Box::pin(PostingStream::try_new(
-            self.partitions[0].clone(),
+            self.partitions[partition].clone(),
             self.projected_schema.clone(),
             self.partition_min_range.as_ref().unwrap().clone(),
             self.distri.clone(),

@@ -1,5 +1,5 @@
 use std::{env, sync::Arc};
-use datafusion::{sql::TableReference, datasource::provider_as_source, logical_expr::TableSource, arrow::datatypes::Schema};
+use datafusion::{sql::TableReference, datasource::provider_as_source, logical_expr::TableSource, arrow::{datatypes::Schema, array::UInt64Array}};
 use tantivy::tokenizer::{TextAnalyzer, SimpleTokenizer};
 use velosearch::{parser, boolean_parser, utils::{Result, builder::deserialize_posting_table}, BooleanContext, jit::AOT_PRIMITIVES, datasources::posting_table::PostingTable};
 use jemallocator::Jemalloc;
@@ -10,7 +10,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 #[tokio::main]
 async fn main() {
-    // tracing_subscriber::fmt().with_max_level(tracing::Level::INFO).init();
+    tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();
     let args: Vec<String> = env::args().collect();
     let partition_num = match args.get(2) {
         Some(p) => p.parse().unwrap(),
@@ -70,9 +70,10 @@ async fn search(words: Vec<&str>, ctx: BooleanContext, table_source: Arc<dyn Tab
     if res.len() == 0 {
         println!("0");
     } else {
-        // .map(|v| v.column(0).as_any().downcast_ref::<UInt64Array>().unwrap().value(0))
-        // .sum();
-        println!("{:}", 0);
+        let sum: usize = res.into_iter()
+        .map(|v| v.column(0).as_any().downcast_ref::<UInt64Array>().unwrap().value(0) as usize)
+        .sum();
+        println!("{:}", sum);
     }
 }
 
