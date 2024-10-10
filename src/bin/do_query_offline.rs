@@ -1,6 +1,6 @@
 use std::{env, sync::Arc, fs::File, io::{self, BufRead}};
-use datafusion::{prelude::*, sql::TableReference, datasource::provider_as_source,arrow::array::UInt64Array};
-use velosearch::{parser, boolean_parser, utils::{Result, builder::deserialize_posting_table}, BooleanContext, jit::AOT_PRIMITIVES, query};
+use datafusion::{sql::TableReference, datasource::provider_as_source,arrow::array::UInt64Array};
+use velosearch::{parser, boolean_parser, utils::{Result, builder::deserialize_posting_table}, BooleanContext, jit::AOT_PRIMITIVES};
 use jemallocator::Jemalloc;
 
 
@@ -50,7 +50,7 @@ async fn main_inner(index_dir: String, partitions_num: usize, query_file: &str) 
             if res.len() == 0 {
                 println!("0");
             } else {
-                let res: u64 = res.into_iter()
+                let _res: u64 = res.into_iter()
                 .map(|v| v.column(0).as_any().downcast_ref::<UInt64Array>().unwrap().value(0))
                 .sum();
                 sum += 1;

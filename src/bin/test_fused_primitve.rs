@@ -34,7 +34,7 @@ fn main() {
         ]
     };
 
-    for i in 0..30 {
+    for _ in 0..30 {
         let mut compile_cnt: u128 = 0;
         let mut interpret_cnt: u128 = 0;
         let mut handed_cnt: u128 = 0;

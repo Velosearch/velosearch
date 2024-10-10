@@ -1,4 +1,4 @@
-use std::{any::Any, ops::Range, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}, task::Poll, borrow::BorrowMut};
+use std::{any::Any, ops::Range, sync::{atomic::{AtomicUsize, Ordering}, Arc}, task::Poll};
 
 use async_trait::async_trait;
 use datafusion::{
@@ -10,6 +10,7 @@ use futures::Stream;
 use adaptive_hybrid_trie::TermIdx;
 use roaring::RoaringBitmap;
 use serde::{Serialize, ser::SerializeStruct};
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 use crate::{batch::{BatchRange, PostingBatch, PostingBatchBuilder}, physical_expr::BooleanEvalExpr};
@@ -30,39 +31,41 @@ impl UpdateQueue {
         }
     }
 
-    fn add_doc(&self, doc: Vec<String>, doc_id: usize) -> Result<()> {
-        self.add_docs(vec![doc], vec![doc_id]);
+    async fn add_doc(&self, doc: Vec<String>, doc_id: usize) -> Result<()> {
+        self.add_docs(vec![doc], doc_id).await;
         Ok(())
     }
 
-    fn add_docs(&self, docs: Vec<Vec<String>>, ids: Vec<usize>) {
+    async fn add_docs(&self, docs: Vec<Vec<String>>, doc_id: usize) {
+        let mut doc_id = doc_id;
         let mut guard = self.builder
             .write()
-            .unwrap();
+            .await;
         let builder = match guard.as_mut() {
             Some(v) => v,
             None => guard.insert(PostingBatchBuilder::new()),
         };
-        docs.into_iter().zip(ids.into_iter())
-        .for_each(|(doc, doc_id)| {
+        docs.into_iter()
+        .for_each(|doc| {
             builder
             .add_docs(doc, doc_id)
-            .unwrap()
+            .unwrap();
+            doc_id += 1;
         });
     }
 
-    fn clear(&self) {
-        if let Some(v) =  self.builder.write().unwrap().as_mut()  {
+    async fn clear(&self) {
+        if let Some(v) =  self.builder.write().await.as_mut()  {
             v.clear();
         }
     }
 
     /// Flush the updateQueue into a PostingBatch.
     /// The deleteQueue should flush in the PostingTable
-    fn flush(&self) -> Result<Option<PostingBatch>> {
-        let builder = self.builder.write().unwrap().take();
+    async fn flush(&self) -> Result<Option<PostingBatch>> {
+        let builder = self.builder.write().await.take();
         // Clear the updateQueue
-        self.clear();
+        self.clear().await;
         let posting_batch = builder.map(PostingBatchBuilder::build)
             .transpose()
             .unwrap();
@@ -77,6 +80,7 @@ pub struct PostingTable {
     postings: RwLock<Vec<Arc<PostingBatch>>>,
     pub partitions_num: AtomicUsize,
     update_queue: Arc<UpdateQueue>,
+    doc_id: AtomicUsize,
 }
 
 impl PostingTable {
@@ -88,25 +92,33 @@ impl PostingTable {
         partitions_num: usize,
     ) -> Self {
         // construct field map to index the position of the fields in schema
+        let doc_id = batches.last().unwrap().range().end();
         Self {
             schema,
             term_idx,
             postings: RwLock::new(batches),
             partitions_num: AtomicUsize::new(partitions_num),
             update_queue: Arc::new(UpdateQueue::new()),
+            doc_id: AtomicUsize::new(doc_id as usize),
         }
     }
 
     /// Add document into update_queue
-    pub fn add_document(&self, doc: Vec<String>, doc_id: usize) {
-        self.update_queue.add_doc(doc, doc_id).unwrap();
+    pub async fn add_document(&self, doc: Vec<String>) {
+        self.update_queue.add_doc(doc, self.doc_id.load(Ordering::Relaxed)).await.unwrap();
+        self.doc_id.fetch_add(1, Ordering::AcqRel);
+    }
+
+    /// Add batched documents into update_queue
+    pub async fn add_documents(&self, docs: Vec<Vec<String>>) {
+        self.update_queue.add_docs(docs, self.doc_id.load(Ordering::Relaxed)).await;
     }
 
     /// Commit the modifications in update queue.
     /// 1. flush the update queue.
     /// 2. merge the segments according to merge policy.
-    pub fn commit(&self) {
-        self.flush();
+    pub async fn commit(&self) {
+        self.flush().await;
     }
 
     /// Force to flush the in-memory updateQueue into compact PostingBatch
@@ -114,19 +126,18 @@ impl PostingTable {
     /// Flush Policy: 
     /// A segment is not searchable after a flush has completed and
     /// is only searchable after a commit.
-    pub fn flush(&self) {
-        let flush_batch = self.update_queue.flush().unwrap();
+    pub async fn flush(&self) {
+        let flush_batch = self.update_queue.flush().await.unwrap();
         if let Some(batch) = flush_batch {
             self.postings
             .write()
-            .as_mut()
-            .unwrap()
+            .await
             .push(Arc::new(batch));
         }
     }
 
     /// Force to merge segments indicated by the `segments` index vector.
-    pub fn merge(&self, segments: Vec<usize>) {
+    pub fn merge(&self, _segments: Vec<usize>) {
         todo!()
     }
 
@@ -147,16 +158,17 @@ impl PostingTable {
     }
 
     pub fn memory_consumption(&self) -> usize {
-        let mut postings: usize = 0;
-        let mut offsets: usize = 0;
-        let mut all: usize = 0;
-        self.postings.read().unwrap().iter()
-            .for_each(|v| {
-                let size = v.memory_consumption();
-                all += size.0;
-                postings += size.1;
-                offsets += size.2;
-            });
+        // todo: replace with async collect method
+        let postings: usize = 0;
+        let offsets: usize = 0;
+        let all: usize = 0;
+        // self.postings.read().unwrap().iter()
+        //     .for_each(|v| {
+        //         let size = v.memory_consumption();
+        //         all += size.0;
+        //         postings += size.1;
+        //         offsets += size.2;
+        //     });
         info!("posting size: {:}", postings);
         info!("offsets size: {:}", offsets);
         all
@@ -197,7 +209,7 @@ impl TableProvider for PostingTable {
         _limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         debug!("PostingTable scan");
-        let posting_guard = self.postings.read().unwrap();
+        let posting_guard = self.postings.read().await;
         let postings: Vec<Arc<PostingBatch>> = match projection {
             Some(v) => v.into_iter()
                 .map(|i| posting_guard[*i].clone())

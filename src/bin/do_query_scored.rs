@@ -1,5 +1,5 @@
 use std::{env, sync::Arc};
-use datafusion::{prelude::*, sql::TableReference, datasource::provider_as_source,arrow::array::UInt64Array, prelude::Expr};
+use datafusion::{sql::TableReference, datasource::provider_as_source};
 use velosearch::{parser, boolean_parser, utils::{Result, builder::deserialize_posting_table}, BooleanContext, jit::AOT_PRIMITIVES};
 use jemallocator::Jemalloc;
 

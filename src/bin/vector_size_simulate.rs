@@ -22,7 +22,7 @@ fn main() {
     ] };
     let primitive = ShortCircuit::try_new(vec![0, 1, 2, 3], predicate, 2, 3, 0).unwrap();
 
-    let physical_preidcate = PhysicalPredicate::Leaf { primitive: Primitives::ShortCircuitPrimitive(primitive) };
+    let _physical_preidcate = PhysicalPredicate::Leaf { primitive: Primitives::ShortCircuitPrimitive(primitive) };
 
     let interpret = PhysicalPredicate::And {
         args: vec![
