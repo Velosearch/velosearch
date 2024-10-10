@@ -10,14 +10,14 @@ use datafusion::{
         logical_expr::{
             LogicalPlan, expr::{BooleanQuery, AggregateFunction}, BinaryExpr, PlanType, ToStringifiedPlan, Projection, TableScan, StringifiedPlan, Operator, logical_plan::Predicate, Aggregate 
         },
-        common::{DFSchema, TermMeta}, arrow::datatypes::{Schema, SchemaRef}, 
+        common::DFSchema, arrow::datatypes::{Schema, SchemaRef}, 
         prelude::Expr, physical_expr::execution_props::ExecutionProps, datasource::source_as_provider, 
         physical_optimizer::PhysicalOptimizerRule
     };
 use futures::{future::BoxFuture, FutureExt};
-use tracing::{debug, trace, info};
+use tracing::{debug, trace};
 
-use crate::{datasources::{mmap_table::MmapExec, posting_table::PostingExec, ExecutorWithMetadata}, physical_expr::{boolean_eval::{PhysicalPredicate, Primitives, SubPredicate}, BooleanEvalExpr}};
+use crate::{datasources::{mmap_table::MmapExec, posting_table::PostingExec}, physical_expr::{boolean_eval::{PhysicalPredicate, Primitives, SubPredicate}, BooleanEvalExpr}};
 
 /// Boolean physical query planner that converts a
 /// `LogicalPlan` to an `ExecutionPlan` suitable for execution.
@@ -127,30 +127,19 @@ impl BooleanPhysicalPlanner {
                     debug!("Create boolean plan");
                     let physical_input = self.create_boolean_plan(&boolean.input, session_state).await?;
                     if let Some(posting)= physical_input.as_any().downcast_ref::<PostingExec>() {
-                        let mut posting = posting.to_owned();
+                        let posting = posting.to_owned();
                         debug!("Create boolean predicate");
                         let runtime_expr: Arc<dyn PhysicalExpr> = if let Some(ref predicate) = boolean.predicate {
                             let schema = boolean.input.schema();
                             let inputs: Vec<&str> = schema.fields().iter().filter(|f| !f.name().starts_with("__NULL__")).map(|f| f.name().as_str()).collect();
-                            let (term2idx,
-                                (term_metas,
-                                term2sel)): (HashMap<&str, usize>, (Vec<Option<TermMeta>>, HashMap<&str, f64>)) = inputs
+                            let (term2idx, term2sel): (HashMap<&str, usize>, HashMap<&str, f64>) = inputs
                                 .into_iter()
                                 .enumerate()
                                 .filter(|(_, s)| *s != "__id__")
                                 .map(|(i, s)| {
-                                    let term_meta = posting.term_meta_of(s);
-                                    if let Some(term_meta) = term_meta {
-                                        info!("{s} term_meta nums: {:?}", term_meta.nums[0]);
-                                        // debug!("{s} term_meta true count: {:?}", term_meta.distribution[0].true_count());
-                                        let sel = term_meta.selectivity;
-                                        ((s, i), (Some(term_meta), (s, sel)))
-                                    } else {
-                                        ((s, i), (None, (s, 0.)))
-                                    }
+                                    ((s, i), (s, 0.))
                                 })
                                 .unzip();
-                            posting.set_term_meta(term_metas);
                             let builder = PhysicalPredicateBuilder::new(predicate, term2idx, term2sel);
                             let physical_predicate = builder.build()?;
                             Arc::new(BooleanEvalExpr::new(physical_predicate))
@@ -168,29 +157,19 @@ impl BooleanPhysicalPlanner {
                         Ok(Arc::new(BooleanExec::try_new(partition_predicate, Arc::new(posting), None, boolean.is_score)?))
                     } else {
                         debug!("Create boolean predicate");
-                        let mut mmep_table = physical_input.as_any().downcast_ref::<MmapExec>().unwrap().to_owned();
+                        let mmep_table = physical_input.as_any().downcast_ref::<MmapExec>().unwrap().to_owned();
                         let runtime_expr: Arc<dyn PhysicalExpr> = if let Some(ref predicate) = boolean.predicate {
                             let schema = boolean.input.schema();
                             let inputs: Vec<&str> = schema.fields().iter().filter(|f| !f.name().starts_with("__NULL__")).map(|f| f.name().as_str()).collect();
                             let (term2idx,
-                                (term_metas,
-                                term2sel)): (HashMap<&str, usize>, (Vec<Option<TermMeta>>, HashMap<&str, f64>)) = inputs
+                                term2sel): (HashMap<&str, usize>, HashMap<&str, f64>) = inputs
                                 .into_iter()
                                 .enumerate()
                                 .filter(|(_, s)| *s != "__id__")
                                 .map(|(i, s)| {
-                                    let term_meta = mmep_table.term_meta_of(s);
-                                    if let Some(term_meta) = term_meta {
-                                        info!("{s} term_meta nums: {:?}", term_meta.nums[0]);
-                                        // debug!("{s} term_meta true count: {:?}", term_meta.distribution[0].true_count());
-                                        let sel = term_meta.selectivity;
-                                        ((s, i), (Some(term_meta), (s, sel)))
-                                    } else {
-                                        ((s, i), (None, (s, 0.)))
-                                    }
+                                        ((s, i), (s, 0.))
                                 })
                                 .unzip();
-                            mmep_table.set_term_meta(term_metas);
                             let builder = PhysicalPredicateBuilder::new(predicate, term2idx, term2sel);
                             let physical_predicate = builder.build()?;
                             Arc::new(BooleanEvalExpr::new(physical_predicate))

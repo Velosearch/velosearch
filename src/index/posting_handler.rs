@@ -1,5 +1,5 @@
 use core::time;
-use std::{cell::RefCell, collections::{BTreeMap, HashMap}, fs::File, io::BufWriter, path::PathBuf, sync::Arc};
+use std::{collections::{BTreeMap, HashMap}, fs::File, io::BufWriter, path::PathBuf, sync::Arc};
 
 use datafusion::{sql::TableReference, arrow::datatypes::{Schema, DataType, Field}, datasource::provider_as_source};
 use adaptive_hybrid_trie::TermIdx;
@@ -117,8 +117,8 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
     debug!("num_512: {}, num_512_partition: {}", num_512, num_512_partition);
     let mut partition_batch = Vec::new();
     let mut term_idx: BTreeMap<String, TermMetaBuilder> = BTreeMap::new();
-    for _ in 0..partition_nums {
-        partition_batch.push(PostingBatchBuilder::new());
+    for i in 0..partition_nums {
+        partition_batch.push(PostingBatchBuilder::new(batch_size * num_512_partition * (i + 1)));
     }
     let mut current: (usize, usize) = (0, 0);
     let mut thredhold = batch_size;
@@ -130,7 +130,7 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
         let mut stream = tokenizer.token_stream(&e.content);
             stream.process(&mut |token| {
                 let word = token.text.clone();
-                let entry = term_idx.entry(word.clone()).or_insert(TermMetaBuilder::new(num_512_partition as usize, partition_nums));
+                let entry = term_idx.entry(word.clone()).or_insert(TermMetaBuilder::new(num_512_partition as usize, partition_nums as usize));
                 if id as u32 >= thredhold {
                     info!("id: {}", id);
                     if id as u32 >= (batch_size * num_512_partition * (current.0 as u32 + 1)) {
@@ -181,16 +181,14 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
         bincode::serialize_into(writer, &partition_batch).unwrap();
     }
 
-    let term_idx = RefCell::new(term_idx);
+    let mut term_idx = term_idx;
 
     let partition_batch: Vec<Arc<PostingBatch>> = partition_batch
         .into_iter()
-        .enumerate()
-        .map(|(n, b )| {
-            Arc::new(b.build_with_idx(Some(&term_idx), n).unwrap())
+        .map(|b| {
+            Arc::new(b.build_with_idx(Some(&mut term_idx)).unwrap())
         })
         .collect();
-    let term_idx = term_idx.into_inner();
 
     let mut keys = Vec::new();
     let mut values = Vec::new();
@@ -235,7 +233,7 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
     }
     assert_eq!(keys.len(), values.len());
     #[cfg(feature = "hash_idx")]
-    let term_idx = Arc::new(TermIdx { term_map: HashMap::from_iter(
+    let _term_idx = Arc::new(TermIdx { term_map: HashMap::from_iter(
         keys.into_iter()
         .zip(values.into_iter())
     ) });
@@ -245,7 +243,6 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
 
     PostingTable::new(
         Arc::new(schema),
-        term_idx,
         partition_batch,
         &BatchRange::new(0, (num_512_partition * batch_size) as u32),
         1,

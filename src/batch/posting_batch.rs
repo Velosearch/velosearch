@@ -1,5 +1,6 @@
-use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, cell::RefCell, collections::BTreeMap, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::{Arc, RwLock}, time::Instant};
+use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, collections::{BTreeMap, HashMap}, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::{Arc, RwLock}};
 
+use adaptive_hybrid_trie::TermIdx;
 use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch, bitmap::Bitmap}, common::TermMeta, from_slice::FromSlice};
 use roaring::RoaringBitmap;
 use serde::{Serialize, Deserialize};
@@ -53,7 +54,8 @@ pub struct PostingBatch {
     term_freqs: Option<BatchFreqs>,
     range: Arc<BatchRange>,
     // tombstone bitmap for deletion operations
-    valid: Option<Arc<RwLock<Bitmap>>>
+    valid: Option<Arc<RwLock<Bitmap>>>,
+    pub term_idx: Arc<TermIdx<TermMeta>>,
 }
 
 impl PostingBatch {
@@ -77,25 +79,42 @@ impl PostingBatch {
     pub fn try_new(
         schema: TermSchemaRef,
         postings: Vec<Arc<PostingList>>,
+        term_idx: Arc<TermIdx<TermMeta>>,
         boundary: Vec<Vec<u16>>,
         range: Arc<BatchRange>,
     ) -> Result<Self> {
-        Self::try_new_impl(schema, postings, None, boundary, range)
+        Self::try_new_impl(
+            schema,
+            postings,
+            term_idx,
+            None,
+            boundary, 
+            range,
+        )
     }
 
     pub fn try_new_with_freqs(
         schema: TermSchemaRef,
         postings: Vec<Arc<PostingList>>,
+        term_idx: Arc<TermIdx<TermMeta>>,
         term_freqs: BatchFreqs,
         boundary: Vec<Vec<u16>>,
         range: Arc<BatchRange>,
     ) -> Result<Self> {
-        Self::try_new_impl(schema, postings, Some(term_freqs), boundary, range)
+        Self::try_new_impl(
+            schema,
+            postings,
+            term_idx,
+            Some(term_freqs),
+            boundary,
+            range,
+        )
     }
 
     pub fn try_new_impl(
         schema: TermSchemaRef,
         postings: Vec<Arc<PostingList>>,
+        term_idx: Arc<TermIdx<TermMeta>>,
         term_freqs: Option<BatchFreqs>,
         _boundary: Vec<Vec<u16>>,
         range: Arc<BatchRange>,
@@ -113,6 +132,7 @@ impl PostingBatch {
         Ok(Self {
             schema, 
             postings,
+            term_idx,
             term_freqs,
             range,
             valid: None,
@@ -190,16 +210,15 @@ impl PostingBatch {
         }
         debug_assert!(batches[0].is_some());
         debug_assert!(batches[1].is_some());
-        let start_time = Instant::now();
+        // let start_time = Instant::now();
         let eval = predicate.eval_avx512(&batches, None, true, min_range.len())?;
-        let duration = start_time.elapsed().as_micros();
+        // let duration = start_time.elapsed().as_micros();
         // let eval: Option<Vec<TempChunk>> = None;
         if let Some(e) = eval {
             let mut accumulator = 0;
             let mut id_acc = 0;
             e.into_iter()
-            .enumerate()
-            .for_each(|(n, v)| unsafe {
+            .for_each(|v| unsafe {
                 match v {
                     TempChunk::Bitmap(b) => {
                         let popcnt = _mm512_popcnt_epi64(b);
@@ -449,22 +468,28 @@ impl Index<&str> for PostingBatch {
 
 #[derive(Serialize, Deserialize)]
 pub struct PostingBatchBuilder {
+    base: u32,
     current: u32,
     pub term_dict: BTreeMap<String, Vec<(u32, u8)>>,
     term_num: usize,
+    // builder for construting term index
+    pub term_idx: BTreeMap<String, TermMetaBuilder>,
 }
 
 impl PostingBatchBuilder {
-    pub fn new() -> Self {
+    pub fn new(base: u32) -> Self {
         Self { 
+            base,
             current: 0,
             term_dict: BTreeMap::new(),
             term_num: 0,
+            term_idx: BTreeMap::new(),
         }
     }
 
     /// Clean the inner in-memory buffer data.
     pub fn clear(&mut self) {
+        self.base += self.current;
         self.current = 0;
         self.term_dict.clear();
         self.term_num = 0;
@@ -482,7 +507,8 @@ impl PostingBatchBuilder {
     }
 
     pub fn push_term(&mut self, term: String, doc_id: u32) -> Result<()> {
-        let off = doc_id;
+        let off = doc_id - self.base;
+        self.term_idx.entry(term.clone()).or_insert(TermMetaBuilder::new(0, 0));
         let entry = self.term_dict
             .entry(term)
             .or_insert(vec![(off, 0)]);
@@ -493,16 +519,16 @@ impl PostingBatchBuilder {
         } else {
             entry.push((off, 1));
         }
-        self.current = doc_id;
+        self.current = off;
         self.term_num += 1;
         Ok(())
     }
 
     pub fn build(self) -> Result<PostingBatch> {
-        self.build_with_idx(None, 0)
+        self.build_with_idx(None)
     }
 
-    pub fn build_with_idx(self, idx: Option<&RefCell<BTreeMap<String, TermMetaBuilder>>>, partition_num: usize) -> Result<PostingBatch> {
+    pub fn build_with_idx(mut self, mut with_idx: Option<&mut BTreeMap<String, TermMetaBuilder>>) -> Result<PostingBatch> {
         let term_dict = self.term_dict;
         let mut schema_list = Vec::new();
         let mut postings: Vec<Arc<PostingList>> = Vec::new();
@@ -517,8 +543,13 @@ impl PostingBatchBuilder {
                 let mut cnter = 0;
                 let mut builder_len = 0;
                 let mut batch_num = 0;
-                if idx.is_some() {
-                    idx.as_ref().unwrap().borrow_mut().get_mut(&k).unwrap().add_idx(i as u32, partition_num);
+                let entry = self.term_idx.get_mut(&k).unwrap();
+                entry.add_idx(i as u32, 0);
+                with_idx.as_mut().map(|v| 
+                    v.entry(k.clone()).and_modify(|v| v.add_idx(i as u32, 0))
+                );
+                if let Some(vv) = v.first() {
+                   entry.set_true(vv.0 as usize/ 512, 0, vv.0);
                 }
                 let mut binary_buffer: Vec<Vec<u8>> = Vec::new();
                 let mut buffer: Vec<u16> = Vec::with_capacity(512);
@@ -534,6 +565,7 @@ impl PostingBatchBuilder {
                         freq_buffer.push(f);
                         freq_num += 1;
                     } else {
+                        entry.set_true(p as usize/ 512, 0, p);
                         let skip_num = (p - cnter) / 512;
                         cnter += skip_num * 512;
                         batch_num += 1;
@@ -610,12 +642,20 @@ impl PostingBatchBuilder {
         info!("binary len: {:}", binary_num);
         schema_list.push(Field::new("__id__", DataType::UInt32, false));
         postings.push(Arc::new(PostingList::from(vec![] as Vec<&[u8]>)));
+        let term_index_iter = self.term_idx.into_iter()
+            .map(|(k, v)| {
+                (k, v.build())
+            });
+        let term_index = TermIdx {
+            term_map: HashMap::from_iter(term_index_iter)
+        };
         PostingBatch::try_new_with_freqs(
             Arc::new(Schema::new(schema_list)),
             postings,
+            Arc::new(term_index),
             freqs,
             vec![],
-            Arc::new(BatchRange::new(0, 512))
+            Arc::new(BatchRange::new(self.base, self.base + self.current))
         )
     }
 
@@ -718,10 +758,10 @@ impl PostingBatchBuilder {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TermMetaBuilder {
-    pub distribution: Vec<Vec<u64>>,
-    pub valid_bitmap: Vec<RoaringBitmap>,
-    pub nums: Vec<u32>,
-    idx: Vec<Option<u32>>,
+    pub distribution: Vec<u64>,
+    pub valid_bitmap: RoaringBitmap,
+    pub nums: u32,
+    idx: u32,
     partition_num: usize,
     bounder: Option<u32>,
 }
@@ -730,30 +770,30 @@ impl TermMetaBuilder {
     pub fn new(_batch_num: usize, partition_num: usize) -> Self {
         Self {
             distribution: vec![],
-            valid_bitmap: vec![RoaringBitmap::new(); partition_num],
-            nums: vec![0; partition_num],
-            idx: vec![None; partition_num],
+            valid_bitmap: RoaringBitmap::new(),
+            nums: 0,
+            idx: u32::MAX,
             partition_num,
             bounder: None,
         }
     }
 
-    pub fn set_true(&mut self, i: usize, partition_num: usize, id: u32) {
+    pub fn set_true(&mut self, i: usize, _partition_num: usize, id: u32) {
         if self.bounder.is_none() || id > self.bounder.unwrap() {
-            self.nums[partition_num] += 1;
+            self.nums += 1;
             self.bounder = Some(id);
         }
         // Add doc_id to valid_bitmap
-        self.valid_bitmap[partition_num].insert(i as u32);
+        self.valid_bitmap.insert(i as u32);
     }
 
-    pub fn add_idx(&mut self, idx: u32, partition_num: usize) {
-        self.idx[partition_num] = Some(idx);
+    pub fn add_idx(&mut self, idx: u32, _partition_num: usize) {
+        self.idx = idx;
     }
 
     pub fn rle_usage(&self) -> usize {
-        let mut builder = PrimitiveRunBuilder::<Int64Type, Int64Type>::with_capacity(self.distribution[0].len());
-        for i in &self.distribution[0] {
+        let mut builder = PrimitiveRunBuilder::<Int64Type, Int64Type>::with_capacity(self.distribution.len());
+        for i in &self.distribution {
             builder.append_value(*i as i64);
         }
         let array: Int64RunArray = builder.finish();
@@ -761,17 +801,12 @@ impl TermMetaBuilder {
     }
 
     pub fn build(self) -> TermMeta {
-        let valid_bitmap: Vec<Arc<RoaringBitmap>> = self.valid_bitmap
-            .into_iter()
-            .map(Arc::new)
-            .collect();
-        let valid_batch_num: usize = valid_bitmap.iter()
-            .map(|d| d.len() as usize)
-            .sum();
-        let sel = self.nums.iter().map(|v| *v).sum::<u32>() as f64 / (512. * valid_batch_num as f64);
+        let valid_bitmap: Arc<RoaringBitmap> = Arc::new(self.valid_bitmap);
+        let valid_batch_num: usize = valid_bitmap.len() as usize;
+        let sel =   self.nums as f64 / (512. * valid_batch_num as f64);
         TermMeta {
-            valid_bitmap: Arc::new(valid_bitmap),
-            index: Arc::new(self.idx),
+            valid_bitmap,
+            index: self.idx,
             nums: self.nums,
             selectivity: sel,
         }

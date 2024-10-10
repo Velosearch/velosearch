@@ -11,11 +11,11 @@ use crate::{batch::{BatchRange, PostingBatchBuilder}, datasources::{mmap_table::
 #[derive(serde::Serialize, serde::Deserialize)]
 struct TermMetaTemp {
     /// Which horizantal partition batches has this Term
-    pub valid_bitmap: Vec<Vec<u32>>,
+    pub valid_bitmap: Vec<u32>,
     /// Witch Batch has this Term
-    pub index: Arc<Vec<Option<u32>>>,
+    pub index: u32,
     /// The number of this Term
-    pub nums: Vec<u32>,
+    pub nums: u32,
     /// Selectivity
     pub selectivity: f64,
 }
@@ -33,12 +33,9 @@ pub fn serialize_term_meta(term_meta: &Vec<TermMeta>, dump_path: String) {
     let term_metas: Vec<TermMetaTemp> = term_meta
         .iter()
         .map(|v| {
-            let valid_bitmap: Vec<Vec<u32>> = v.valid_bitmap
+            let valid_bitmap: Vec<u32> = v.valid_bitmap
                 .as_ref()
                 .iter()
-                .map(|v| {
-                    v.iter().collect()
-                })
                 .collect();
             TermMetaTemp {
                 valid_bitmap,
@@ -110,12 +107,7 @@ pub fn deserialize_posting_table(dump_path: String, partitions_num: usize) -> Op
         .map(|v| {
             compressed_consume += v.rle_usage();
          
-            let valid_bitmap = v.valid_bitmap
-                .into_iter()
-                .map(|v| {
-                    Arc::new(RoaringBitmap::from_sorted_iter(v.into_iter()).unwrap())
-                })
-                .collect();
+            let valid_bitmap = RoaringBitmap::from_sorted_iter(v.valid_bitmap.into_iter()).unwrap();
             let termmeta = TermMeta {
                 valid_bitmap: Arc::new(valid_bitmap),
                 index: v.index,
@@ -129,7 +121,7 @@ pub fn deserialize_posting_table(dump_path: String, partitions_num: usize) -> Op
     info!("term len: {:}", values.len());
     info!("term index: {:}", memory_consume);
     info!("compreed index: {:}", compressed_consume);
-    let bitmap_consumption: usize = values.iter().map(|v| v.valid_bitmap.as_ref()[0].memory_consumption()).sum();
+    let bitmap_consumption: usize = values.iter().map(|v| v.valid_bitmap.as_ref().memory_consumption()).sum();
     info!("valid bitmap consumption: {:}", bitmap_consumption);
     #[cfg(all(feature = "trie_idx", not(feature = "hash_idx")))]
     let term_idx = Arc::new(TermIdx::new(keys, values, 20));
@@ -154,7 +146,6 @@ pub fn deserialize_posting_table(dump_path: String, partitions_num: usize) -> Op
 
     Some(PostingTable::new(
         Arc::new(schema),
-        term_idx,
         partition_batch,
         &batch_range,
         partitions_num,
@@ -218,12 +209,7 @@ pub fn deserialize_mmap_table(dump_path: String, _partitions_num: usize) -> Opti
         .map(|v| {
             compressed_consume += v.rle_usage();
          
-            let valid_bitmap = v.valid_bitmap
-                .into_iter()
-                .map(|v| {
-                    Arc::new(RoaringBitmap::from_sorted_iter(v.into_iter()).unwrap())
-                })
-                .collect();
+            let valid_bitmap = RoaringBitmap::from_sorted_iter(v.valid_bitmap.into_iter()).unwrap();
             let termmeta = TermMeta {
                 valid_bitmap: Arc::new(valid_bitmap),
                 index: v.index,
@@ -237,7 +223,7 @@ pub fn deserialize_mmap_table(dump_path: String, _partitions_num: usize) -> Opti
     info!("term len: {:}", values.len());
     info!("term index: {:}", memory_consume);
     info!("compreed index: {:}", compressed_consume);
-    let bitmap_consumption: usize = values.iter().map(|v| v.valid_bitmap.as_ref()[0].memory_consumption()).sum();
+    let bitmap_consumption: usize = values.iter().map(|v| v.valid_bitmap.as_ref().memory_consumption()).sum();
     info!("valid bitmap consumption: {:}", bitmap_consumption);
     #[cfg(all(feature = "trie_idx", not(feature = "hash_idx")))]
     let term_idx = Arc::new(TermIdx::new(keys, values, 20));

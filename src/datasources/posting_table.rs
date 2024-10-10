@@ -7,15 +7,12 @@ use datafusion::{
     logical_expr::TableType, execution::context::SessionState, prelude::Expr, error::{Result, DataFusionError}, 
     physical_plan::{ExecutionPlan, Partitioning, DisplayFormatType, project_schema, RecordBatchStream, metrics::{ExecutionPlanMetricsSet, MetricsSet}}, common::TermMeta};
 use futures::Stream;
-use adaptive_hybrid_trie::TermIdx;
 use roaring::RoaringBitmap;
 use serde::{Serialize, ser::SerializeStruct};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
-
 use crate::{batch::{BatchRange, PostingBatch, PostingBatchBuilder}, physical_expr::BooleanEvalExpr};
 
-use super::ExecutorWithMetadata;
 
 /// The update/delete operations add entries in the `UpdateQueue`.
 /// Update operations add entry in queue and then add new docs.
@@ -25,9 +22,9 @@ struct UpdateQueue {
 }
 
 impl UpdateQueue {
-    fn new() -> Self {
+    fn new(base: u32) -> Self {
         Self {
-            builder: RwLock::new(Some(PostingBatchBuilder::new())),
+            builder: RwLock::new(Some(PostingBatchBuilder::new(base))),
         }
     }
 
@@ -41,10 +38,7 @@ impl UpdateQueue {
         let mut guard = self.builder
             .write()
             .await;
-        let builder = match guard.as_mut() {
-            Some(v) => v,
-            None => guard.insert(PostingBatchBuilder::new()),
-        };
+        let builder = guard.as_mut().unwrap();
         docs.into_iter()
         .for_each(|doc| {
             builder
@@ -76,7 +70,6 @@ impl UpdateQueue {
 /// The implementation of vectorized table provider of Cocoa.
 pub struct PostingTable {
     schema: SchemaRef,
-    term_idx: Arc<TermIdx<TermMeta>>,
     postings: RwLock<Vec<Arc<PostingBatch>>>,
     pub partitions_num: AtomicUsize,
     update_queue: Arc<UpdateQueue>,
@@ -86,7 +79,6 @@ pub struct PostingTable {
 impl PostingTable {
     pub fn new(
         schema: SchemaRef,
-        term_idx: Arc<TermIdx<TermMeta>>,
         batches: Vec<Arc<PostingBatch>>,
         _range: &BatchRange,
         partitions_num: usize,
@@ -95,10 +87,9 @@ impl PostingTable {
         let doc_id = batches.last().unwrap().range().end();
         Self {
             schema,
-            term_idx,
             postings: RwLock::new(batches),
             partitions_num: AtomicUsize::new(partitions_num),
-            update_queue: Arc::new(UpdateQueue::new()),
+            update_queue: Arc::new(UpdateQueue::new(doc_id)),
             doc_id: AtomicUsize::new(doc_id as usize),
         }
     }
@@ -142,19 +133,21 @@ impl PostingTable {
     }
 
     #[inline]
-    pub fn stat_of(&self, term_name: &str, _partition: usize) -> Option<TermMeta> {
+    pub async fn stat_of(&self, term_name: &str, partition: usize) -> Option<TermMeta> {
         #[cfg(feature="trie_idx")]
         let meta = self.term_idx.get(term_name);
         #[cfg(feature="hash_idx")]
-        let meta = self.term_idx.get(term_name).cloned();
+        let meta = self.postings.read().await[partition].term_idx.get(term_name).cloned();
         meta
     }
 
-    pub fn stats_of(&self, term_names: &[&str], partition: usize) -> Vec<Option<TermMeta>> {
-        term_names
-            .into_iter()
-            .map(|v| self.stat_of(v, partition))
-            .collect()
+    pub async fn stats_of(&self, term_names: &[&str], partition: usize) -> Vec<Option<TermMeta>> {
+        let mut metas = vec![];
+        let guard = self.postings.read().await;
+        for term in term_names {
+            metas.push(guard[partition].term_idx.get(term).cloned())
+        }
+        return metas;
     }
 
     pub fn memory_consumption(&self) -> usize {
@@ -217,11 +210,9 @@ impl TableProvider for PostingTable {
         let segment_num = postings.len();
         Ok(Arc::new(PostingExec::try_new(
             postings, 
-            self.term_idx.clone(),
             self.schema(), 
             projection.cloned(),
             None,
-            vec![],
             segment_num
         )?))
     }
@@ -231,12 +222,10 @@ impl TableProvider for PostingTable {
 pub struct PostingExec {
     pub partitions: Vec<Arc<PostingBatch>>,
     pub schema: SchemaRef,
-    pub term_idx: Arc<TermIdx<TermMeta>>,
     pub projected_schema: SchemaRef,
     pub projection: Option<Vec<usize>>,
     pub partition_min_range: Option<Arc<RoaringBitmap>>,
     pub is_score: bool,
-    pub projected_term_meta: Vec<Option<TermMeta>>,
     pub predicate: Option<BooleanEvalExpr>,
     pub partitions_num: usize,
     metric: ExecutionPlanMetricsSet,
@@ -347,11 +336,9 @@ impl PostingExec {
     /// The provided `schema` shuold not have the projection applied.
     pub fn try_new(
         partitions: Vec<Arc<PostingBatch>>,
-        term_idx: Arc<TermIdx<TermMeta>>,
         schema: SchemaRef,
         projection: Option<Vec<usize>>,
         partition_min_range: Option<Arc<RoaringBitmap>>,
-        projected_term_meta: Vec<Option<TermMeta>>,
         partitions_num: usize,
     ) -> Result<Self> {
         let projected_schema = project_schema(&schema, projection.as_ref())?;
@@ -363,49 +350,17 @@ impl PostingExec {
         //     .unzip();
         Ok(Self {
             partitions: partitions,
-            term_idx,
             schema,
             projected_schema,
             projection,
             partition_min_range,
             is_score: false,
-            projected_term_meta,
             predicate: None,
             partitions_num,
             metric: ExecutionPlanMetricsSet::new(),
             distri: vec![],
             idx: vec![],
         })
-    }
-}
-
-impl ExecutorWithMetadata for PostingExec {
-    /// Get TermMeta From &[&str]
-    fn term_metas_of(&self, terms: &[&str]) -> Vec<Option<TermMeta>> {
-        let term_idx = self.term_idx.clone();
-        terms
-            .into_iter()
-            .map(|&t| {
-                #[cfg(feature="trie_idx")]
-                let meta = term_idx.get(t);
-                #[cfg(feature="hash_idx")]
-                let meta = term_idx.get(t).cloned();
-                meta
-            })
-            .collect()
-    }
-
-    /// Get TermMeta From &str
-    fn term_meta_of(&self, term: &str) -> Option<TermMeta> {
-        #[cfg(not(feature="hash_idx"))]
-        let meta = self.term_idx.get(term);
-        #[cfg(feature="hash_idx")]
-        let meta = self.term_idx.get(term).cloned();
-        meta
-    }
-    
-    fn set_term_meta(&mut self, term_meta: Vec<Option<TermMeta>>) {
-        self.projected_term_meta = term_meta;
     }
 }
 

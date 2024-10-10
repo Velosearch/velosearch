@@ -58,18 +58,18 @@ pub struct ColumnStatistics {
 #[derive(Clone, Debug)]
 pub struct TermMeta {
     /// Valid bitmap indicating which batch has this term
-    pub valid_bitmap: Arc<Vec<Arc<RoaringBitmap>>>,
+    pub valid_bitmap: Arc<RoaringBitmap>,
     /// Which Batch has this Term
-    pub index: Arc<Vec<Option<u32>>>,
+    pub index: u32,
     /// The number of this Term
-    pub nums: Vec<u32>,
+    pub nums: u32,
     /// Selectivity
     pub selectivity: f64,
 }
 
 impl TermMeta {
     /// Get the distribution of term
-    pub fn valid_bitmap(&self) -> Arc<Vec<Arc<RoaringBitmap>>> {
+    pub fn valid_bitmap(&self) -> Arc<RoaringBitmap> {
         self.valid_bitmap.clone()
     }
 
