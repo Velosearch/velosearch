@@ -59,7 +59,7 @@ pub struct ColumnStatistics {
 pub struct TermMeta {
     /// Valid bitmap indicating which batch has this term
     pub valid_bitmap: Arc<Vec<Arc<RoaringBitmap>>>,
-    /// Witch Batch has this Term
+    /// Which Batch has this Term
     pub index: Arc<Vec<Option<u32>>>,
     /// The number of this Term
     pub nums: Vec<u32>,

@@ -1,4 +1,4 @@
-use std::{any::Any, ops::Range, sync::{atomic::{AtomicUsize, Ordering}, Arc}, task::Poll};
+use std::{any::Any, ops::Range, sync::{atomic::{AtomicUsize, Ordering}, Arc, RwLock}, task::Poll, borrow::BorrowMut};
 
 use async_trait::async_trait;
 use datafusion::{
@@ -12,15 +12,71 @@ use roaring::RoaringBitmap;
 use serde::{Serialize, ser::SerializeStruct};
 use tracing::{debug, info};
 
-use crate::{batch::{BatchRange, PostingBatch}, physical_expr::BooleanEvalExpr};
+use crate::{batch::{BatchRange, PostingBatch, PostingBatchBuilder}, physical_expr::BooleanEvalExpr};
 
 use super::ExecutorWithMetadata;
 
+/// The update/delete operations add entries in the `UpdateQueue`.
+/// Update operations add entry in queue and then add new docs.
+/// Delete operations directly add entry in this queue.
+struct UpdateQueue {
+    builder: RwLock<Option<PostingBatchBuilder>>,
+}
+
+impl UpdateQueue {
+    fn new() -> Self {
+        Self {
+            builder: RwLock::new(Some(PostingBatchBuilder::new())),
+        }
+    }
+
+    fn add_doc(&self, doc: Vec<String>, doc_id: usize) -> Result<()> {
+        self.add_docs(vec![doc], vec![doc_id]);
+        Ok(())
+    }
+
+    fn add_docs(&self, docs: Vec<Vec<String>>, ids: Vec<usize>) {
+        let mut guard = self.builder
+            .write()
+            .unwrap();
+        let builder = match guard.as_mut() {
+            Some(v) => v,
+            None => guard.insert(PostingBatchBuilder::new()),
+        };
+        docs.into_iter().zip(ids.into_iter())
+        .for_each(|(doc, doc_id)| {
+            builder
+            .add_docs(doc, doc_id)
+            .unwrap()
+        });
+    }
+
+    fn clear(&self) {
+        if let Some(v) =  self.builder.write().unwrap().as_mut()  {
+            v.clear();
+        }
+    }
+
+    /// Flush the updateQueue into a PostingBatch.
+    /// The deleteQueue should flush in the PostingTable
+    fn flush(&self) -> Result<Option<PostingBatch>> {
+        let builder = self.builder.write().unwrap().take();
+        // Clear the updateQueue
+        self.clear();
+        let posting_batch = builder.map(PostingBatchBuilder::build)
+            .transpose()
+            .unwrap();
+        Ok(posting_batch)
+    }
+}
+
+/// The implementation of vectorized table provider of Cocoa.
 pub struct PostingTable {
     schema: SchemaRef,
     term_idx: Arc<TermIdx<TermMeta>>,
-    postings: Vec<Arc<PostingBatch>>,
+    postings: RwLock<Vec<Arc<PostingBatch>>>,
     pub partitions_num: AtomicUsize,
+    update_queue: Arc<UpdateQueue>,
 }
 
 impl PostingTable {
@@ -35,9 +91,43 @@ impl PostingTable {
         Self {
             schema,
             term_idx,
-            postings: batches,
+            postings: RwLock::new(batches),
             partitions_num: AtomicUsize::new(partitions_num),
+            update_queue: Arc::new(UpdateQueue::new()),
         }
+    }
+
+    /// Add document into update_queue
+    pub fn add_document(&self, doc: Vec<String>, doc_id: usize) {
+        self.update_queue.add_doc(doc, doc_id).unwrap();
+    }
+
+    /// Commit the modifications in update queue.
+    /// 1. flush the update queue.
+    /// 2. merge the segments according to merge policy.
+    pub fn commit(&self) {
+        self.flush();
+    }
+
+    /// Force to flush the in-memory updateQueue into compact PostingBatch
+    /// 
+    /// Flush Policy: 
+    /// A segment is not searchable after a flush has completed and
+    /// is only searchable after a commit.
+    pub fn flush(&self) {
+        let flush_batch = self.update_queue.flush().unwrap();
+        if let Some(batch) = flush_batch {
+            self.postings
+            .write()
+            .as_mut()
+            .unwrap()
+            .push(Arc::new(batch));
+        }
+    }
+
+    /// Force to merge segments indicated by the `segments` index vector.
+    pub fn merge(&self, segments: Vec<usize>) {
+        todo!()
     }
 
     #[inline]
@@ -60,7 +150,7 @@ impl PostingTable {
         let mut postings: usize = 0;
         let mut offsets: usize = 0;
         let mut all: usize = 0;
-        self.postings.iter()
+        self.postings.read().unwrap().iter()
             .for_each(|v| {
                 let size = v.memory_consumption();
                 all += size.0;
@@ -71,19 +161,6 @@ impl PostingTable {
         info!("offsets size: {:}", offsets);
         all
     }
-
-    // pub fn serialize(&self, path: &Path) -> Result<()> {
-    //     if let Ok(f) = File::open(path) {
-    //         let writer = std::io::BufWriter::new(f);
-    //         bincode::serialize_into(writer, &self)
-    //         .map_err(|e| FastErr::IoError(e.to_string()))
-    //     } else {
-    //         let file = File::create(path)?;
-    //         let writer = std::io::BufWriter::new(file);
-    //         bincode::serialize_into(writer, &self)
-    //         .map_err(|e| FastErr::IoError(e.to_string()))
-    //     }
-    // }
 }
 
 impl Serialize for PostingTable {
@@ -120,8 +197,17 @@ impl TableProvider for PostingTable {
         _limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         debug!("PostingTable scan");
+        let posting_guard = self.postings.read().unwrap();
+        let postings: Vec<Arc<PostingBatch>> = match projection {
+            Some(v) => v.into_iter()
+                .map(|i| posting_guard[*i].clone())
+                .collect(),
+            None => posting_guard.iter()
+                .map(|i| i.clone())
+                .collect(),
+        };
         Ok(Arc::new(PostingExec::try_new(
-            self.postings.clone(), 
+            postings, 
             self.term_idx.clone(),
             self.schema(), 
             projection.cloned(),
@@ -245,12 +331,6 @@ impl ExecutionPlan for PostingExec {
     fn statistics(&self) -> datafusion::physical_plan::Statistics {
         todo!()
     }
-
-    // We recompute the statistics dynamically from the arrow metadata as it is pretty cheap to do so
-    // fn statistics(&self) -> datafusion::physical_plan::Statistics {
-    //     common::compute_record_batch_statistics(
-    //         &self.partitions, &self.schema, self.projection.clone())
-    // }
 }
 
 impl PostingExec {

@@ -4,7 +4,8 @@ use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, Gener
 use roaring::RoaringBitmap;
 use serde::{Serialize, Deserialize};
 use tracing::{debug, info};
-use crate::{datasources::mmap_table::{PostingColumn, PostingSegment}, physical_expr::{boolean_eval::{freqs_filter, Chunk, TempChunk}, BooleanEvalExpr}, utils::{avx512::U64x8, FastErr, Result}};
+use crate::{datasources::mmap_table::{PostingColumn, PostingSegment}, physical_expr::{boolean_eval::{freqs_filter, Chunk, TempChunk}, BooleanEvalExpr}, utils::{avx512::U64x8, FastErr}};
+use crate::utils::Result;
 
 
 /// The doc_id range [start, end) Batch range determines the  of relevant batch.
@@ -51,7 +52,8 @@ pub struct PostingBatch {
     postings: Vec<Arc<PostingList>>,
     term_freqs: Option<BatchFreqs>,
     range: Arc<BatchRange>,
-    valid: Arc<RwLock<Bitmap>>
+    // tombstone bitmap for deletion operations
+    valid: Option<Arc<RwLock<Bitmap>>>
 }
 
 impl PostingBatch {
@@ -105,15 +107,15 @@ impl PostingBatch {
                 schema.fields().len(),
             )));
         }
-        let valid = Arc::new(
-            RwLock::new(Bitmap::new(range.len() as usize))
-        );
+        // let valid = Arc::new(
+        //     RwLock::new(Bitmap::new(range.len() as usize))
+        // );
         Ok(Self {
             schema, 
             postings,
             term_freqs,
             range,
-            valid
+            valid: None,
         })  
     }
 
@@ -142,7 +144,11 @@ impl PostingBatch {
             }
         };
         let mut batches: Vec<Option<Vec<Chunk>>> = Vec::with_capacity(distris.len());
-        let _valid = self.valid.read().unwrap().clone();
+        // let _valid = self.valid.read().unwrap().clone();
+        let _valid: Option<Bitmap> = match self.valid.as_ref() {
+            Some(b) => Some(b.read().unwrap().clone()),
+            None => None,
+        };
         debug!("Start select valid batch.");
         for (term, i) in distris.iter().zip(indices.iter()) {
             let mut posting = Vec::with_capacity(min_range.len());
@@ -444,7 +450,7 @@ impl Index<&str> for PostingBatch {
 #[derive(Serialize, Deserialize)]
 pub struct PostingBatchBuilder {
     current: u32,
-    pub term_dict: RefCell<BTreeMap<String, Vec<(u32, u8)>>>,
+    pub term_dict: BTreeMap<String, Vec<(u32, u8)>>,
     term_num: usize,
 }
 
@@ -452,19 +458,32 @@ impl PostingBatchBuilder {
     pub fn new() -> Self {
         Self { 
             current: 0,
-            term_dict: RefCell::new(BTreeMap::new()),
+            term_dict: BTreeMap::new(),
             term_num: 0,
         }
+    }
+
+    /// Clean the inner in-memory buffer data.
+    pub fn clear(&mut self) {
+        self.current = 0;
+        self.term_dict.clear();
+        self.term_num = 0;
     }
 
     pub fn doc_len(&self) -> usize {
         self.current as usize
     }
 
+    pub fn add_docs(&mut self, doc: Vec<String>, doc_id: usize) -> Result<()> {
+        for term in doc.into_iter() {
+            self.push_term(term, doc_id as u32)?;
+        }
+        Ok(())
+    }
+
     pub fn push_term(&mut self, term: String, doc_id: u32) -> Result<()> {
         let off = doc_id;
         let entry = self.term_dict
-            .get_mut()
             .entry(term)
             .or_insert(vec![(off, 0)]);
         if entry.last().unwrap().0 ==  off {
@@ -484,8 +503,7 @@ impl PostingBatchBuilder {
     }
 
     pub fn build_with_idx(self, idx: Option<&RefCell<BTreeMap<String, TermMetaBuilder>>>, partition_num: usize) -> Result<PostingBatch> {
-        let term_dict = self.term_dict
-            .into_inner();
+        let term_dict = self.term_dict;
         let mut schema_list = Vec::new();
         let mut postings: Vec<Arc<PostingList>> = Vec::new();
         let mut freqs = Vec::new();
@@ -602,8 +620,7 @@ impl PostingBatchBuilder {
     }
 
     pub fn build_mmap_segment(self, _partition_num: usize) -> Result<PostingSegment> {
-        let term_dict = self.term_dict
-            .into_inner();
+        let term_dict = self.term_dict;
         let mut schema_list = Vec::new();
         let mut postings: Vec<PostingColumn> = Vec::new();
         // let mut freqs = Vec::new();
