@@ -233,7 +233,7 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
     }
     assert_eq!(keys.len(), values.len());
     #[cfg(feature = "hash_idx")]
-    let _term_idx = Arc::new(TermIdx { term_map: HashMap::from_iter(
+    let _term_idx = Arc::new(TermIdx { term_map: BTreeMap::from_iter(
         keys.into_iter()
         .zip(values.into_iter())
     ) });

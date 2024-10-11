@@ -48,7 +48,11 @@ async fn main_inner(index_dir: Option<String>, partitions_num: usize) -> Result<
                 while let Some(token) = token_stream.next() {
                     doc.push(token.text.clone());
                 }
-                insert_one(posting_table.clone(), doc).await;
+                insert(posting_table.clone(), doc, 512).await;
+            }
+            "MERGE" => {
+                posting_table.schedule_merge().await;
+                println!("Merge all segments!");
             }
             _ => unreachable!(),
         }
@@ -57,8 +61,9 @@ async fn main_inner(index_dir: Option<String>, partitions_num: usize) -> Result<
     Ok(())
 }
 
-async fn insert_one(posting_table: Arc<PostingTable>, doc: Vec<String>) {
-    posting_table.add_document(doc).await;
+async fn insert(posting_table: Arc<PostingTable>, doc: Vec<String>, times: usize) {
+    let docs = (0..times).map(|_| doc.clone()).collect::<Vec<_>>();
+    posting_table.add_documents(docs).await;
     posting_table.commit().await;
     println!("Commit one inserted document");
 }

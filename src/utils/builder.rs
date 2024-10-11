@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::{self, File}, io::{BufReader, BufWriter}, path::PathBuf, sync::Arc};
+use std::{collections::{HashMap, BTreeMap}, fs::{self, File}, io::{BufReader, BufWriter}, path::PathBuf, sync::Arc};
 
 use adaptive_hybrid_trie::TermIdx;
 use datafusion::{arrow::datatypes::{Schema, Field, DataType}, common::TermMeta};
@@ -227,7 +227,7 @@ pub fn deserialize_mmap_table(dump_path: String, _partitions_num: usize) -> Opti
     #[cfg(all(feature = "trie_idx", not(feature = "hash_idx")))]
     let term_idx = Arc::new(TermIdx::new(keys, values, 20));
     #[cfg(feature = "hash_idx")]
-    let term_idx = Arc::new(TermIdx { term_map: HashMap::from_iter(keys.into_iter().zip(values.into_iter())) });
+    let term_idx = Arc::new(TermIdx { term_map: BTreeMap::from_iter(keys.into_iter().zip(values.into_iter())) });
 
     info!("finish deserializing index");
     if fs::metadata(path.join(PathBuf::from("dump.mmap"))).is_ok() {

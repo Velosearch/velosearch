@@ -1,7 +1,7 @@
-use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, collections::{BTreeMap, HashMap}, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::{Arc, RwLock}};
+use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, collections::{BTreeMap, HashMap, btree_map::Iter, BinaryHeap, BTreeSet}, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::{Arc, RwLock}, cmp::Ordering};
 
 use adaptive_hybrid_trie::TermIdx;
-use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch, bitmap::Bitmap}, common::TermMeta, from_slice::FromSlice};
+use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array, GenericByteBuilder}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch, bitmap::Bitmap}, common::TermMeta, from_slice::FromSlice};
 use roaring::RoaringBitmap;
 use serde::{Serialize, Deserialize};
 use tracing::{debug, info};
@@ -49,7 +49,6 @@ pub type BatchFreqs = Vec<Freqs>;
 /// which is in range[start, end)
 #[derive(Clone, Debug)]
 pub struct PostingBatch {
-    schema: TermSchemaRef,
     postings: Vec<Arc<PostingList>>,
     term_freqs: Option<BatchFreqs>,
     range: Arc<BatchRange>,
@@ -85,60 +84,39 @@ impl PostingBatch {
     }
 
     pub fn try_new(
-        schema: TermSchemaRef,
         postings: Vec<Arc<PostingList>>,
         term_idx: Arc<TermIdx<TermMeta>>,
-        boundary: Vec<Vec<u16>>,
         range: Arc<BatchRange>,
     ) -> Result<Self> {
         Self::try_new_impl(
-            schema,
             postings,
             term_idx,
             None,
-            boundary, 
             range,
         )
     }
 
     pub fn try_new_with_freqs(
-        schema: TermSchemaRef,
         postings: Vec<Arc<PostingList>>,
         term_idx: Arc<TermIdx<TermMeta>>,
         term_freqs: BatchFreqs,
-        boundary: Vec<Vec<u16>>,
         range: Arc<BatchRange>,
     ) -> Result<Self> {
         Self::try_new_impl(
-            schema,
             postings,
             term_idx,
             Some(term_freqs),
-            boundary,
             range,
         )
     }
 
     pub fn try_new_impl(
-        schema: TermSchemaRef,
         postings: Vec<Arc<PostingList>>,
         term_idx: Arc<TermIdx<TermMeta>>,
         term_freqs: Option<BatchFreqs>,
-        _boundary: Vec<Vec<u16>>,
         range: Arc<BatchRange>,
     ) -> Result<Self> {
-        if schema.fields().len() != postings.len() {
-            return Err(FastErr::InternalErr(format!(
-                "number of columns({}) must match number of fields({}) in schema",
-                postings.len(),
-                schema.fields().len(),
-            )));
-        }
-        // let valid = Arc::new(
-        //     RwLock::new(Bitmap::new(range.len() as usize))
-        // );
         Ok(Self {
-            schema, 
             postings,
             term_idx,
             term_freqs,
@@ -436,7 +414,6 @@ impl PostingBatch {
 
     pub fn space_usage(&self) -> usize {
         let mut space = 0;
-        space += size_of_val(self.schema.as_ref());
         space += self.postings
             .iter()
             .map(|v| size_of_val(v.data().buffers()[0].as_slice()))
@@ -445,7 +422,7 @@ impl PostingBatch {
     }
 
     pub fn schema(&self) -> TermSchemaRef {
-        self.schema.clone()
+        unreachable!()
     }
 
     pub fn range(&self) -> &BatchRange {
@@ -497,7 +474,7 @@ impl PostingBatchBuilder {
 
     /// Clean the inner in-memory buffer data.
     pub fn clear(&mut self) {
-        self.base += self.current;
+        self.base += self.current + 1;
         self.current = 0;
         self.term_num = 0;
     }
@@ -611,6 +588,7 @@ impl PostingBatchBuilder {
                 });
 
                 if buffer.len() > 0 {
+                    entry.set_true(buffer[0] as usize/ 512, 0, buffer[0] as u32 + 512);
                     if buffer.len() > 8 {
                         let mut bitmap: Vec<u64> = vec![0; 8];
                         for i in &buffer {
@@ -657,17 +635,15 @@ impl PostingBatchBuilder {
                 (k, v.build())
             });
         let term_index = TermIdx {
-            term_map: HashMap::from_iter(term_index_iter)
+            term_map: BTreeMap::from_iter(term_index_iter)
         };
         self.term_idx = Some(BTreeMap::new());
 
         PostingBatch::try_new_with_freqs(
-            Arc::new(Schema::new(schema_list)),
             postings,
             Arc::new(term_index),
             freqs,
-            vec![],
-            Arc::new(BatchRange::new(self.base, self.base + self.current))
+            Arc::new(BatchRange::new(self.base, self.base + self.current + 1))
         )
     }
 
@@ -764,11 +740,115 @@ impl PostingBatchBuilder {
     }
 }
 
-// #[inline]
-// fn clear_lowest_set_bit(v: u64) -> u64 {
-//     unsafe { _blsr_u64(v) }
-// }
+/// Core operation of merging two posting batches.
+pub fn merge_segments(batches: Vec<Arc<PostingBatch>>) -> Result<Arc<PostingBatch>> {
+    assert!(batches.len() > 1, "Should merge multiple segments greater than 2");
+    let mut cnt = 0;
+    let mut intervals = vec![];
+    for i in &batches {
+        intervals.push(cnt / 512);
+        cnt += i.range().len();
+    }
+    debug!("intervals: {:?}", intervals);
 
+    let range = Arc::new(BatchRange::new(
+        batches.first().unwrap().range.start,
+        batches.last().unwrap().range.end,
+    ));
+
+    let mut terms = batches.iter()
+        .enumerate()
+        .map(|(i, it)| {
+            it.term_idx.term_map.iter()
+            .map(|v| (i, v.0, v.1))
+            .collect::<Vec<_>>()
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+    terms.sort_by(|a, b| 
+        a.1.cmp(b.1).then_with(|| a.0.cmp(&b.0)));
+    debug!("merged terms: {:?}", terms);
+    let mut postings = vec![];
+    let mut term_idx = BTreeMap::new();
+
+    let mut current: (usize, &String) = (terms[0].0, terms[0].1);
+    let mut merge_batches = Vec::with_capacity(batches.len());
+    merge_batches.push(&terms[0]);
+    let mut ii = 0;
+    let mut item = &terms[1];
+    let mut flush = false;
+    // for (ii, item) in terms[1..].iter().enumerate() {
+    loop {
+        if item.1 > current.1 || flush {
+            // merge batches
+            if merge_batches.len() == 1  {
+                let mut meta = merge_batches[0].2.clone();
+                if current.0 != 0 {
+                    let interval = intervals[current.0];
+                    let bitmap = RoaringBitmap::from_sorted_iter(
+                        meta.valid_bitmap.iter().map(|v| v + interval)).unwrap();
+                    meta.valid_bitmap = Arc::new(bitmap);
+                }
+                meta.index = postings.len() as u32;
+                term_idx.insert(current.1.clone(), meta);
+                postings.push(batches[current.0].postings[merge_batches[0].2.index as usize].clone());
+            } else {
+                debug!("batches when merging: {:?}", merge_batches);
+                let bitmap = RoaringBitmap::from_sorted_iter(
+                    merge_batches.iter()
+                    .map(|v| v.2.valid_bitmap.iter().map(|i| i + intervals[v.0]))
+                    .flatten()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                ).unwrap();
+                let meta = TermMeta {
+                    valid_bitmap: Arc::new(bitmap),
+                    index: postings.len() as u32,
+                    nums: 0,
+                    selectivity: 0.,
+                };
+                // merge posting lists
+                // If the last batch is smaller than 512, we should re
+                let mut postings_tmp = vec![];
+                let mut byte_num = 0;
+                let mut item_num = 0;
+                merge_batches.iter()
+                .for_each(|v| {
+                    let posting = batches[v.0].postings[v.2.index as usize].clone();
+                    byte_num += posting.len();
+                    item_num += posting.value_offsets().len();
+                    postings_tmp.push(posting);
+                });
+                let mut builder = GenericBinaryBuilder::with_capacity(item_num, byte_num);
+                for p in postings_tmp {
+                    for i in p.iter() {
+                        builder.append_value(i.unwrap());
+                    }
+                }
+                postings.push(Arc::new(builder.finish()));
+                term_idx.insert(current.1.clone(), meta);
+            }
+            current = (item.0, item.1);
+            merge_batches.clear();
+            merge_batches.push(&item);
+        } else {
+            merge_batches.push(&item);
+        }
+        if flush {
+            break;
+        }
+        if ii >= terms.len() - 2 && merge_batches.len() > 0 {
+            flush = true;
+            continue;
+        }
+        ii += 1;
+        item = &terms[ii + 1];
+    }
+    let term_idx = Arc::new(TermIdx{ term_map: term_idx });
+    debug!("merged postings: {:?}", postings);
+    debug!("merged term_idx: {:?}", term_idx);
+    Ok(Arc::new(PostingBatch::try_new(postings, term_idx, range).unwrap()))
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TermMetaBuilder {

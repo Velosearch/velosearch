@@ -10,7 +10,7 @@ use futures::Stream;
 use roaring::RoaringBitmap;
 use tokio::sync::RwLock;
 use tracing::{debug, info};
-use crate::{batch::{PostingBatch, PostingBatchBuilder}, physical_expr::BooleanEvalExpr};
+use crate::{batch::{PostingBatch, PostingBatchBuilder, merge_segments}, physical_expr::BooleanEvalExpr};
 
 
 /// The update/delete operations add entries in the `UpdateQueue`.
@@ -86,6 +86,20 @@ impl PostingTable {
         }
     }
 
+    /// Pick merges that are now required.
+    /// Return the indexes of picked segments.
+    pub async fn find_merges(&self) -> Vec<usize> {
+        todo!()
+    }
+
+    pub async fn schedule_merge(&self) {
+        // just for test
+        let segment = merge_segments(self.postings.write().await.clone()).unwrap();
+        let mut guard = self.postings.write().await;
+        guard.clear();
+        guard.push(segment);
+    }
+
     /// Add document into update_queue
     pub async fn add_document(&self, doc: Vec<String>) {
         self.update_queue.add_doc(doc, self.doc_id.load(Ordering::Relaxed)).await.unwrap();
@@ -94,7 +108,7 @@ impl PostingTable {
 
     /// Add batched documents into update_queue
     pub async fn add_documents(&self, docs: Vec<Vec<String>>) {
-        self.update_queue.add_docs(docs, self.doc_id.load(Ordering::Relaxed)).await;
+        self.update_queue.add_docs(docs, self.doc_id.fetch_add(512, Ordering::Relaxed)).await;
     }
 
     /// Commit the modifications in update queue.
