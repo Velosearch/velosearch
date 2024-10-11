@@ -478,10 +478,10 @@ impl Index<&str> for PostingBatch {
 pub struct PostingBatchBuilder {
     base: u32,
     current: u32,
-    pub term_dict: BTreeMap<String, Vec<(u32, u8)>>,
+    pub term_dict: Option<BTreeMap<String, Vec<(u32, u8)>>>,
     term_num: usize,
     // builder for construting term index
-    pub term_idx: BTreeMap<String, TermMetaBuilder>,
+    pub term_idx: Option<BTreeMap<String, TermMetaBuilder>>,
 }
 
 impl PostingBatchBuilder {
@@ -489,9 +489,9 @@ impl PostingBatchBuilder {
         Self { 
             base,
             current: 0,
-            term_dict: BTreeMap::new(),
+            term_dict: Some(BTreeMap::new()),
             term_num: 0,
-            term_idx: BTreeMap::new(),
+            term_idx: Some(BTreeMap::new()),
         }
     }
 
@@ -499,7 +499,6 @@ impl PostingBatchBuilder {
     pub fn clear(&mut self) {
         self.base += self.current;
         self.current = 0;
-        self.term_dict.clear();
         self.term_num = 0;
     }
 
@@ -516,8 +515,8 @@ impl PostingBatchBuilder {
 
     pub fn push_term(&mut self, term: String, doc_id: u32) -> Result<()> {
         let off = doc_id - self.base;
-        self.term_idx.entry(term.clone()).or_insert(TermMetaBuilder::new(0, 0));
-        let entry = self.term_dict
+        self.term_idx.as_mut().unwrap().entry(term.clone()).or_insert(TermMetaBuilder::new(0, 0));
+        let entry = self.term_dict.as_mut().unwrap()
             .entry(term)
             .or_insert(vec![(off, 0)]);
         if entry.last().unwrap().0 ==  off {
@@ -532,12 +531,14 @@ impl PostingBatchBuilder {
         Ok(())
     }
 
-    pub fn build(self) -> Result<PostingBatch> {
+    pub fn build(&mut self) -> Result<PostingBatch> {
         self.build_with_idx(None)
     }
 
-    pub fn build_with_idx(mut self, mut with_idx: Option<&mut BTreeMap<String, TermMetaBuilder>>) -> Result<PostingBatch> {
-        let term_dict = self.term_dict;
+    pub fn build_with_idx(&mut self, mut with_idx: Option<&mut BTreeMap<String, TermMetaBuilder>>) -> Result<PostingBatch> {
+        let term_dict = self.term_dict.take().unwrap();
+        self.term_dict = Some(BTreeMap::new());
+
         let mut schema_list = Vec::new();
         let mut postings: Vec<Arc<PostingList>> = Vec::new();
         let mut freqs = Vec::new();
@@ -551,7 +552,7 @@ impl PostingBatchBuilder {
                 let mut cnter = 0;
                 let mut builder_len = 0;
                 let mut batch_num = 0;
-                let entry = self.term_idx.get_mut(&k).unwrap();
+                let entry = self.term_idx.as_mut().unwrap().get_mut(&k).unwrap();
                 entry.add_idx(i as u32, 0);
                 with_idx.as_mut().map(|v| 
                     v.entry(k.clone()).and_modify(|v| v.add_idx(i as u32, 0))
@@ -650,13 +651,16 @@ impl PostingBatchBuilder {
         info!("binary len: {:}", binary_num);
         schema_list.push(Field::new("__id__", DataType::UInt32, false));
         postings.push(Arc::new(PostingList::from(vec![] as Vec<&[u8]>)));
-        let term_index_iter = self.term_idx.into_iter()
+        let term_index_iter = self.term_idx.take().unwrap()
+            .into_iter()
             .map(|(k, v)| {
                 (k, v.build())
             });
         let term_index = TermIdx {
             term_map: HashMap::from_iter(term_index_iter)
         };
+        self.term_idx = Some(BTreeMap::new());
+
         PostingBatch::try_new_with_freqs(
             Arc::new(Schema::new(schema_list)),
             postings,
@@ -667,8 +671,10 @@ impl PostingBatchBuilder {
         )
     }
 
-    pub fn build_mmap_segment(self, _partition_num: usize) -> Result<PostingSegment> {
-        let term_dict = self.term_dict;
+    pub fn build_mmap_segment(&mut self, _partition_num: usize) -> Result<PostingSegment> {
+        let term_dict = self.term_dict.take().unwrap();
+        self.term_dict = Some(BTreeMap::new());
+
         let mut schema_list = Vec::new();
         let mut postings: Vec<PostingColumn> = Vec::new();
         // let mut freqs = Vec::new();

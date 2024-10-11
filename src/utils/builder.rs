@@ -139,7 +139,7 @@ pub fn deserialize_posting_table(dump_path: String, partitions_num: usize) -> Op
     }
     let partition_batch = posting_batch
         .into_iter()
-        .map(|b| Arc::new(
+        .map(|mut b| Arc::new(
             b.build().unwrap()
         ))
         .collect();

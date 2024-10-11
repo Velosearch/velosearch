@@ -17,13 +17,13 @@ use crate::{batch::{PostingBatch, PostingBatchBuilder}, physical_expr::BooleanEv
 /// Update operations add entry in queue and then add new docs.
 /// Delete operations directly add entry in this queue.
 struct UpdateQueue {
-    builder: RwLock<Option<PostingBatchBuilder>>,
+    builder: RwLock<PostingBatchBuilder>,
 }
 
 impl UpdateQueue {
     fn new(base: u32) -> Self {
         Self {
-            builder: RwLock::new(Some(PostingBatchBuilder::new(base))),
+            builder: RwLock::new(PostingBatchBuilder::new(base)),
         }
     }
 
@@ -37,10 +37,9 @@ impl UpdateQueue {
         let mut guard = self.builder
             .write()
             .await;
-        let builder = guard.as_mut().unwrap();
         docs.into_iter()
         .for_each(|doc| {
-            builder
+            guard
             .add_docs(doc, doc_id)
             .unwrap();
             doc_id += 1;
@@ -48,20 +47,15 @@ impl UpdateQueue {
     }
 
     async fn clear(&self) {
-        if let Some(v) =  self.builder.write().await.as_mut()  {
-            v.clear();
-        }
+        self.builder.write().await.clear();
     }
 
     /// Flush the updateQueue into a PostingBatch.
     /// The deleteQueue should flush in the PostingTable
     async fn flush(&self) -> Result<Option<PostingBatch>> {
-        let builder = self.builder.write().await.take();
+        let posting_batch = self.builder.write().await.build().ok();
         // Clear the updateQueue
         self.clear().await;
-        let posting_batch = builder.map(PostingBatchBuilder::build)
-            .transpose()
-            .unwrap();
         Ok(posting_batch)
     }
 }

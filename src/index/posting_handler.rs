@@ -185,7 +185,7 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
 
     let partition_batch: Vec<Arc<PostingBatch>> = partition_batch
         .into_iter()
-        .map(|b| {
+        .map(|mut b| {
             Arc::new(b.build_with_idx(Some(&mut term_idx)).unwrap())
         })
         .collect();
