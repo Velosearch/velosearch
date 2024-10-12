@@ -3549,6 +3549,7 @@ dependencies = [
  "datafusion",
  "failure",
  "futures",
+ "itertools",
  "jemallocator",
  "lazy_static",
  "memmap",

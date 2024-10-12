@@ -1,5 +1,5 @@
 use std::{any::Any, ops::Range, sync::{atomic::{AtomicUsize, Ordering}, Arc}, task::Poll};
-
+use itertools::Itertools;
 use async_trait::async_trait;
 use datafusion::{
     arrow::{datatypes::{SchemaRef, Schema, Field, DataType}, record_batch::RecordBatch, array::UInt64Array}, 
@@ -12,6 +12,113 @@ use tokio::sync::RwLock;
 use tracing::{debug, info};
 use crate::{batch::{PostingBatch, PostingBatchBuilder, merge_segments}, physical_expr::BooleanEvalExpr};
 
+const DEFAULT_LEVEL_LOG_SIZE: f64 = 0.75;
+const DEFAULT_MIN_LAYER_SIZE: u32 = 10_000;
+const DEFAULT_MIN_NUM_SEGMENTS_IN_MERGE: usize = 8;
+const DEFAULT_MAX_DOCS_BEFORE_MERGE: usize = 10_000_000;
+// The default value of 1 means that deletes are not taken in account when
+// identifying merge candidates. This is not a very sensible default: it was
+// set like that for backward compatibility and might change in the near future.
+const DEFAULT_DEL_DOCS_RATIO_BEFORE_MERGE: f32 = 1.0f32;
+
+/// `LogMergePolicy` tries to merge segments that have a similar number of dodcuments
+#[derive(Debug, Clone)]
+pub struct LogMergePolicy {
+    min_num_segments: usize,
+    /// Set the maximum number docs in a segment for it to be considered for
+    /// merging. A segment can still reach more than max_docs, by merging many
+    /// smaller ones
+    max_docs_before_merge: usize,
+    /// Set the minimum segment size under which all segment belong
+    /// to the same level.
+    min_layer_size: u32,
+    /// Segments are grouped in levels according to their sizes.
+    /// These levels are defined as intervals of exponentially growing sizes.
+    /// level_log_size define the factor by which one should multiply the limit
+    /// to reach a level, in order to get the limit to reach the following
+    /// level.
+    level_log_size: f64,
+    /// Set the ratio of deleted documents in a segment to tolerate.
+    /// If it is exceeded by any segment at a log level, a merge
+    /// will be triggered for that level.
+    /// If there is a single segment at a level, we effectively end up expunging
+    /// deleted documents from it.
+    del_docs_ratio_before_merge: f32,
+}
+
+impl LogMergePolicy {
+    fn clip_min_size(&self, size: u32) -> u32 {
+        std::cmp::max(self.min_layer_size, size)
+    }
+
+    /// Given the list of segment metas, returns the list of merge candidates.
+    ///
+    /// This call happens on the segment updater thread, and will block
+    /// other segment updates, so all implementations should happen rapidly.
+    pub fn compute_merge_candidates(&self, segments: &[SegmentMeta]) -> Vec<Vec<usize>> {
+        let size_sorted_segments = segments
+            .iter()
+            .filter(|seg| seg.num_docs() <= (self.max_docs_before_merge as u32))
+            .sorted_by_key(|seg| std::cmp::Reverse(seg.max_doc()))
+            .collect::<Vec<_>>();
+
+        if size_sorted_segments.is_empty() {
+            return vec![];
+        }
+
+        let mut current_max_log_size = f64::MAX;
+        let mut levels = vec![];
+        for (_, merge_group) in &size_sorted_segments.into_iter().group_by(|segment| {
+            let segment_log_size = f64::from(self.clip_min_size(segment.num_docs())).log2();
+            if segment_log_size < (current_max_log_size - self.level_log_size) {
+                // update current_max_log_size to create a new group
+                current_max_log_size = segment_log_size;
+            }
+            // return current_max_log_size to be grouped to the current group
+            current_max_log_size
+        }) {
+            levels.push(merge_group.collect::<Vec<_>>())
+        }
+
+        levels
+            .into_iter()
+            .filter(|level| {level.len() >= self.min_num_segments})
+            .map(|segments| segments.into_iter().map(SegmentMeta::id).collect())
+            .collect()
+    }
+}
+
+impl Default for LogMergePolicy {
+    fn default() -> Self {
+        LogMergePolicy {
+            min_num_segments: DEFAULT_MIN_NUM_SEGMENTS_IN_MERGE,
+            max_docs_before_merge: DEFAULT_MAX_DOCS_BEFORE_MERGE,
+            min_layer_size: DEFAULT_MIN_LAYER_SIZE,
+            level_log_size: DEFAULT_LEVEL_LOG_SIZE,
+            del_docs_ratio_before_merge: DEFAULT_DEL_DOCS_RATIO_BEFORE_MERGE,
+        }
+    }
+}
+
+pub struct SegmentMeta {
+    id: usize,
+    num_docs: u32,
+    max_doc: usize,
+}
+
+impl SegmentMeta {
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
+    pub fn num_docs(&self) -> u32 {
+        self.num_docs
+    }
+
+    pub fn max_doc(&self) -> usize {
+        self.max_doc
+    }
+}
 
 /// The update/delete operations add entries in the `UpdateQueue`.
 /// Update operations add entry in queue and then add new docs.
