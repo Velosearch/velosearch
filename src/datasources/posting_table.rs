@@ -12,9 +12,12 @@ use tokio::sync::RwLock;
 use tracing::{debug, info};
 use crate::{batch::{PostingBatch, PostingBatchBuilder, merge_segments}, physical_expr::BooleanEvalExpr};
 
+// Only when temp buffer size is larger than a batch size,
+// the flush operation can be auto triggered.
+const DEFAULT_THRSHOLD: usize = 512;
 const DEFAULT_LEVEL_LOG_SIZE: f64 = 0.75;
 const DEFAULT_MIN_LAYER_SIZE: u32 = 10_000;
-const DEFAULT_MIN_NUM_SEGMENTS_IN_MERGE: usize = 8;
+const DEFAULT_MIN_NUM_SEGMENTS_IN_MERGE: usize = 4;
 const DEFAULT_MAX_DOCS_BEFORE_MERGE: usize = 10_000_000;
 // The default value of 1 means that deletes are not taken in account when
 // identifying merge candidates. This is not a very sensible default: it was
@@ -43,7 +46,9 @@ pub struct LogMergePolicy {
     /// will be triggered for that level.
     /// If there is a single segment at a level, we effectively end up expunging
     /// deleted documents from it.
-    del_docs_ratio_before_merge: f32,
+    /// 
+    /// For now, the deletes are not taken in account when identifying merge candidates.
+    _del_docs_ratio_before_merge: f32,
 }
 
 impl LogMergePolicy {
@@ -95,11 +100,12 @@ impl Default for LogMergePolicy {
             max_docs_before_merge: DEFAULT_MAX_DOCS_BEFORE_MERGE,
             min_layer_size: DEFAULT_MIN_LAYER_SIZE,
             level_log_size: DEFAULT_LEVEL_LOG_SIZE,
-            del_docs_ratio_before_merge: DEFAULT_DEL_DOCS_RATIO_BEFORE_MERGE,
+            _del_docs_ratio_before_merge: DEFAULT_DEL_DOCS_RATIO_BEFORE_MERGE,
         }
     }
 }
 
+#[derive(Debug)]
 pub struct SegmentMeta {
     id: usize,
     num_docs: u32,
@@ -107,6 +113,14 @@ pub struct SegmentMeta {
 }
 
 impl SegmentMeta {
+    pub fn from_posting(id: usize, posting: &PostingBatch) -> Self {
+        Self {
+            id,
+            num_docs: posting.batch_len() as u32,
+            max_doc: posting.range().end() as usize - 1,
+        }
+    }
+
     pub fn id(&self) -> usize {
         self.id
     }
@@ -125,32 +139,36 @@ impl SegmentMeta {
 /// Delete operations directly add entry in this queue.
 struct UpdateQueue {
     builder: RwLock<PostingBatchBuilder>,
+    doc_len: AtomicUsize,
 }
 
 impl UpdateQueue {
     fn new(base: u32) -> Self {
         Self {
             builder: RwLock::new(PostingBatchBuilder::new(base)),
+            doc_len: AtomicUsize::new(0),
         }
     }
 
     async fn add_doc(&self, doc: Vec<String>, doc_id: usize) -> Result<()> {
         self.add_docs(vec![doc], doc_id).await;
+        self.doc_len.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
     async fn add_docs(&self, docs: Vec<Vec<String>>, doc_id: usize) {
+        self.doc_len.fetch_add(docs.len(), Ordering::Relaxed);
         let mut doc_id = doc_id;
         let mut guard = self.builder
             .write()
             .await;
         docs.into_iter()
-        .for_each(|doc| {
-            guard
-            .add_docs(doc, doc_id)
-            .unwrap();
-            doc_id += 1;
-        });
+            .for_each(|doc| {
+                guard
+                .add_docs(doc, doc_id)
+                .unwrap();
+                doc_id += 1;
+            });
     }
 
     async fn clear(&self) {
@@ -167,13 +185,21 @@ impl UpdateQueue {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum SegmentsState {
+    Merging,
+    Normal,
+}
+
 /// The implementation of vectorized table provider of Cocoa.
 pub struct PostingTable {
     schema: SchemaRef,
-    postings: RwLock<Vec<Arc<PostingBatch>>>,
+    postings: Arc<RwLock<Vec<Arc<PostingBatch>>>>,
     pub partitions_num: AtomicUsize,
     update_queue: Arc<UpdateQueue>,
     doc_id: AtomicUsize,
+    merge_policy: LogMergePolicy,
+    state: Arc<RwLock<SegmentsState>>,
 }
 
 impl PostingTable {
@@ -186,25 +212,65 @@ impl PostingTable {
         let doc_id = batches.last().map_or(0, |v| v.range().end());
         Self {
             schema,
-            postings: RwLock::new(batches),
+            postings: Arc::new(RwLock::new(batches)),
             partitions_num: AtomicUsize::new(partitions_num),
             update_queue: Arc::new(UpdateQueue::new(doc_id)),
             doc_id: AtomicUsize::new(doc_id as usize),
+            merge_policy: LogMergePolicy::default(),
+            state: Arc::new(RwLock::new(SegmentsState::Normal)),
         }
+    }
+
+    pub async fn segment_num(&self) -> usize {
+        return self.postings.read().await.len();
     }
 
     /// Pick merges that are now required.
     /// Return the indexes of picked segments.
-    pub async fn find_merges(&self) -> Vec<usize> {
-        todo!()
+    pub async fn find_merges(&self) -> Vec<Vec<usize>> {
+        let guard = self.postings.read().await;
+        let metas = guard.iter()
+            .enumerate()
+            .map(|(id, batch)| SegmentMeta::from_posting(id, batch))
+            .collect::<Vec<_>>();
+        self.merge_policy.compute_merge_candidates(&metas)
     }
 
     pub async fn schedule_merge(&self) {
-        // just for test
-        let segment = merge_segments(self.postings.write().await.clone()).unwrap();
-        let mut guard = self.postings.write().await;
-        guard.clear();
-        guard.push(segment);
+        if *self.state.read().await == SegmentsState::Merging { return; }
+        let guard = self.postings.read().await;
+
+        let merge_specification = self.find_merges().await;
+        if merge_specification.len() == 0 { return; }
+        let start_off = merge_specification.last().unwrap()
+            .iter()
+            .min()
+            .cloned().unwrap();
+        debug!("Merge specification: {:?}", merge_specification);
+        let merge_specification = merge_specification.into_iter()
+            .map(|group| {
+                group.into_iter()
+                    .map(|v| guard[v].clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        *self.state.write().await = SegmentsState::Merging;
+        let postings_ref = self.postings.clone();
+        let state_ref = self.state.clone();
+        // async merging
+        tokio::task::spawn(async move {
+            debug!("Start background segment merging task");
+            let mut segments = merge_specification.into_iter()
+                .map(|group| {
+                    merge_segments(group).unwrap()
+                })
+                .collect::<Vec<_>>();
+            let mut guard = postings_ref.write().await;
+            guard.drain(start_off..);
+            guard.append(&mut segments);
+            *state_ref.write().await = SegmentsState::Normal;
+            debug!("Finish background segment merging task");
+        });
     }
 
     /// Add document into update_queue
@@ -222,7 +288,9 @@ impl PostingTable {
     /// 1. flush the update queue.
     /// 2. merge the segments according to merge policy.
     pub async fn commit(&self) {
-        self.flush().await;
+        if self.update_queue.doc_len.load(Ordering::Relaxed) >= DEFAULT_THRSHOLD {
+            self.flush().await;
+        }
     }
 
     /// Force to flush the in-memory updateQueue into compact PostingBatch
@@ -238,11 +306,8 @@ impl PostingTable {
             .await
             .push(Arc::new(batch));
         }
-    }
 
-    /// Force to merge segments indicated by the `segments` index vector.
-    pub fn merge(&self, _segments: Vec<usize>) {
-        todo!()
+        self.schedule_merge().await;
     }
 
     #[inline]

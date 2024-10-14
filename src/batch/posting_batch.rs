@@ -1,7 +1,7 @@
-use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, collections::{BTreeMap, HashMap, btree_map::Iter, BinaryHeap, BTreeSet}, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::{Arc, RwLock}, cmp::Ordering};
+use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, collections::{BTreeMap, BTreeSet}, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::{Arc, RwLock}};
 
 use adaptive_hybrid_trie::TermIdx;
-use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array, GenericByteBuilder}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch, bitmap::Bitmap}, common::TermMeta, from_slice::FromSlice};
+use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch, bitmap::Bitmap}, common::TermMeta, from_slice::FromSlice};
 use roaring::RoaringBitmap;
 use serde::{Serialize, Deserialize};
 use tracing::{debug, info};
@@ -793,7 +793,7 @@ pub fn merge_segments(batches: Vec<Arc<PostingBatch>>) -> Result<Arc<PostingBatc
                 term_idx.insert(current.1.clone(), meta);
                 postings.push(batches[current.0].postings[merge_batches[0].2.index as usize].clone());
             } else {
-                debug!("batches when merging: {:?}", merge_batches);
+                // debug!("batches when merging: {:?}", merge_batches);
                 let bitmap = RoaringBitmap::from_sorted_iter(
                     merge_batches.iter()
                     .map(|v| v.2.valid_bitmap.iter().map(|i| i + intervals[v.0]))
@@ -845,8 +845,6 @@ pub fn merge_segments(batches: Vec<Arc<PostingBatch>>) -> Result<Arc<PostingBatc
         item = &terms[ii + 1];
     }
     let term_idx = Arc::new(TermIdx{ term_map: term_idx });
-    debug!("merged postings: {:?}", postings);
-    debug!("merged term_idx: {:?}", term_idx);
     Ok(Arc::new(PostingBatch::try_new(postings, term_idx, range).unwrap()))
 }
 

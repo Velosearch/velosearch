@@ -40,7 +40,7 @@ async fn main_inner(index_dir: Option<String>, partitions_num: usize) -> Result<
     for line_res in stdin.lines() {
         let line = line_res?;
         let words: Vec<&str> = line.split("\t").collect();
-        match words[0] {
+        match words[0].to_uppercase().as_str() {
             "COUNT" => search(words, ctx.clone(), table_source.clone(), schema).await,
             "INSERT" => {
                 let mut token_stream = tokenizer.token_stream(&words[1]);
@@ -54,7 +54,12 @@ async fn main_inner(index_dir: Option<String>, partitions_num: usize) -> Result<
                 posting_table.schedule_merge().await;
                 println!("Merge all segments!");
             }
-            _ => unreachable!(),
+            "SEGLEN" => {
+                println!("Segment count: {:}", posting_table.segment_num().await);
+            }
+            _ => {
+                println!("Unregconized input: {:?}", words);
+            },
         }
         ;
     }
