@@ -39,7 +39,8 @@ cranelift = "0.100"
 cranelift-jit = {version = "0.100", features = ["selinux-fix"] }
 cranelift-module = "0.100"
 cranelift-native = "0.100"
-tantivy = "0.19"
+# tantivy = "0.19"
+tantivy = {path = "/home/RT_Enzyme/repo/search_toys/tantivy"}
 criterion = {version = "0.5", features = ["html_reports"]}
 sorted-iter = "0.1.11"
 lazy_static = "1.4"
@@ -51,6 +52,8 @@ peg = "0.8"
 roaring = {path="roaring-rs", features = ["serde"]}
 memmap = "0.7"
 rkyv = "0.7"
+itertools = "0.10"
+indicatif = "0.17"
 
 [[bench]]
 name = "arrow_bitwise_and"

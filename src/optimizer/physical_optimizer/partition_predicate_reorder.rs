@@ -1,10 +1,10 @@
 //! PartitionPredicateReorder optimizer that reorder the predicate in 
 //! every partition
 
-use std::{sync::Arc, collections::HashMap};
+use std::sync::Arc;
 use datafusion::{
     common::Result,
-    physical_optimizer::PhysicalOptimizerRule, physical_plan::{ExecutionPlan, boolean::BooleanExec, PhysicalExpr, expressions::Dnf}, config::ConfigOptions, physical_expr::BooleanQueryExpr,
+    physical_optimizer::PhysicalOptimizerRule, physical_plan::{ExecutionPlan, boolean::BooleanExec}, config::ConfigOptions, physical_expr::BooleanQueryExpr,
 
 };
 
@@ -28,30 +28,31 @@ impl PhysicalOptimizerRule for PartitionPredicateReorder {
     ) -> Result<Arc<dyn ExecutionPlan>> {
         if let Some(boolean) = plan.as_any().downcast_ref::<BooleanExec>() {
             match &boolean.terms_stats {
-                Some(stats) => {
-                    let predicate = boolean.predicate[&0].clone();
+                Some(_stats) => {
+                    let predicate = boolean.predicate.clone();
                     let predicate = predicate.as_any().downcast_ref::<BooleanQueryExpr>().expect("Predicate should be BooleanQueryExpr");
-                    if let Some(ref cnf) = predicate.cnf_predicates {
-                        let reorder_predicate: HashMap<usize, Arc<dyn PhysicalExpr>> = stats
-                        .iter()
-                        .map(|_p| {
-                            // TODO
-                            let mut cnf: Vec<Dnf> = cnf
-                                .iter()
-                                .map(|dnf| dnf)
-                                .cloned()
-                                .collect();
-                            cnf.sort_by(|l, r| l.selectivity().partial_cmp(&r.selectivity()).unwrap());
-                            cnf
-                        })
-                        .map(|c| Arc::new(BooleanQueryExpr::new_with_cnf(predicate.predicate_tree.clone(), c)) as Arc<dyn PhysicalExpr>)
-                        .enumerate()
-                        .collect();
+                    if let Some(ref _cnf) = predicate.cnf_predicates {
+                        // let reorder_predicate: HashMap<usize, Arc<dyn PhysicalExpr>> = stats
+                        // .iter()
+                        // .map(|_p| {
+                        //     // TODO
+                        //     let mut cnf: Vec<Dnf> = cnf
+                        //         .iter()
+                        //         .map(|dnf| dnf)
+                        //         .cloned()
+                        //         .collect();
+                        //     cnf.sort_by(|l, r| l.selectivity().partial_cmp(&r.selectivity()).unwrap());
+                        //     cnf
+                        // })
+                        // .map(|c| Arc::new(BooleanQueryExpr::new_with_cnf(predicate.predicate_tree.clone(), c)) as Arc<dyn PhysicalExpr>)
+                        // .enumerate()
+                        // .collect();
                         Ok(Arc::new(BooleanExec::try_new(
-                            reorder_predicate,
+                            boolean.predicate.clone(),
                             boolean.input.clone(),
                             boolean.terms_stats.clone(),
                             boolean.is_score,
+                            boolean.projected_terms.clone(),
                         )?))
                     } else {
                         Ok(plan)

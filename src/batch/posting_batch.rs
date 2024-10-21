@@ -1,8 +1,10 @@
-use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, cell::RefCell, collections::BTreeMap, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::{Arc, RwLock}, time::Instant};
+use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, collections::{BTreeMap, BTreeSet}, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::Arc};
 
-use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch, bitmap::Bitmap}, common::TermMeta, from_slice::FromSlice};
+use adaptive_hybrid_trie::TermIdx;
+use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch}, common::TermMeta, from_slice::FromSlice};
 use roaring::RoaringBitmap;
 use serde::{Serialize, Deserialize};
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 use crate::{datasources::mmap_table::{PostingColumn, PostingSegment}, physical_expr::{boolean_eval::{freqs_filter, Chunk, TempChunk}, BooleanEvalExpr}, utils::{avx512::U64x8, FastErr}};
 use crate::utils::Result;
@@ -26,6 +28,11 @@ impl BatchRange {
             nums32: (end - start + 31) / 32
         }
     }
+
+    /// get the `start` of BatchRange
+    pub fn start(&self) -> u32 {
+        self.start
+    }
     
     /// get the `end` of BatchRange
     pub fn end(&self) -> u32 {
@@ -48,15 +55,27 @@ pub type BatchFreqs = Vec<Freqs>;
 /// which is in range[start, end)
 #[derive(Clone, Debug)]
 pub struct PostingBatch {
-    schema: TermSchemaRef,
     postings: Vec<Arc<PostingList>>,
     term_freqs: Option<BatchFreqs>,
     range: Arc<BatchRange>,
     // tombstone bitmap for deletion operations
-    valid: Option<Arc<RwLock<Bitmap>>>
+    valid: Arc<RwLock<RoaringBitmap>>,
+    pub term_idx: Arc<TermIdx<TermMeta>>,
 }
 
 impl PostingBatch {
+    pub fn term_metas_of(&self, terms: &Vec<String>) -> Vec<Option<&TermMeta>> {
+        let mut metas = vec![];
+        for term in terms {
+            metas.push(self.term_idx.get(term));
+        }
+        metas
+    }
+
+    pub async fn delete(&self, position: u32) {
+        self.valid.write().await.insert(position);
+    }
+
     pub fn memory_consumption(&self) -> (usize, usize, usize) {
         let mut offset: usize = 0;
         let mut postings: usize = 0;
@@ -75,47 +94,44 @@ impl PostingBatch {
     }
 
     pub fn try_new(
-        schema: TermSchemaRef,
         postings: Vec<Arc<PostingList>>,
-        boundary: Vec<Vec<u16>>,
+        term_idx: Arc<TermIdx<TermMeta>>,
         range: Arc<BatchRange>,
     ) -> Result<Self> {
-        Self::try_new_impl(schema, postings, None, boundary, range)
+        Self::try_new_impl(
+            postings,
+            term_idx,
+            None,
+            range,
+        )
     }
 
     pub fn try_new_with_freqs(
-        schema: TermSchemaRef,
         postings: Vec<Arc<PostingList>>,
+        term_idx: Arc<TermIdx<TermMeta>>,
         term_freqs: BatchFreqs,
-        boundary: Vec<Vec<u16>>,
         range: Arc<BatchRange>,
     ) -> Result<Self> {
-        Self::try_new_impl(schema, postings, Some(term_freqs), boundary, range)
+        Self::try_new_impl(
+            postings,
+            term_idx,
+            Some(term_freqs),
+            range,
+        )
     }
 
     pub fn try_new_impl(
-        schema: TermSchemaRef,
         postings: Vec<Arc<PostingList>>,
+        term_idx: Arc<TermIdx<TermMeta>>,
         term_freqs: Option<BatchFreqs>,
-        _boundary: Vec<Vec<u16>>,
         range: Arc<BatchRange>,
     ) -> Result<Self> {
-        if schema.fields().len() != postings.len() {
-            return Err(FastErr::InternalErr(format!(
-                "number of columns({}) must match number of fields({}) in schema",
-                postings.len(),
-                schema.fields().len(),
-            )));
-        }
-        // let valid = Arc::new(
-        //     RwLock::new(Bitmap::new(range.len() as usize))
-        // );
         Ok(Self {
-            schema, 
             postings,
+            term_idx,
             term_freqs,
             range,
-            valid: None,
+            valid: Arc::new(RwLock::new(RoaringBitmap::new())),
         })  
     }
 
@@ -145,10 +161,7 @@ impl PostingBatch {
         };
         let mut batches: Vec<Option<Vec<Chunk>>> = Vec::with_capacity(distris.len());
         // let _valid = self.valid.read().unwrap().clone();
-        let _valid: Option<Bitmap> = match self.valid.as_ref() {
-            Some(b) => Some(b.read().unwrap().clone()),
-            None => None,
-        };
+        // let _valid: u64 = self.valid.read().await.len();
         debug!("Start select valid batch.");
         for (term, i) in distris.iter().zip(indices.iter()) {
             let mut posting = Vec::with_capacity(min_range.len());
@@ -163,9 +176,9 @@ impl PostingBatch {
             let mut rank_iter = term.rank_iter();
             debug!("min_range: {:?}", min_range);
             for &idx in min_range {
-                if term.contains(idx) {
+                // if term.contains(idx) {
                     let bound_idx: usize = rank_iter.rank(idx);
-                    debug!("bound_idx: {:}, real: {:}, idx: {:}, i: {:}", bound_idx, term.rank(idx), idx, i.unwrap());
+                    // debug!("bound_idx: {:}, real: {:}, idx: {:}, i: {:}", bound_idx, term.rank(idx), idx, i.unwrap());
                     let batch = batch.value(bound_idx - 1);
                     if batch.len() == 64 {
                         let batch = unsafe {
@@ -178,9 +191,9 @@ impl PostingBatch {
                         };
                         posting.push(Chunk::IDs(batch));
                     }
-                } else {
-                    posting.push(Chunk::N0NE);
-                }
+                // } else {
+                //     posting.push(Chunk::N0NE);
+                // }
             }
             if posting.len() > 0 {
                 batches.push(Some(posting));
@@ -190,25 +203,24 @@ impl PostingBatch {
         }
         debug_assert!(batches[0].is_some());
         debug_assert!(batches[1].is_some());
-        let start_time = Instant::now();
+        // let start_time = Instant::now();
         let eval = predicate.eval_avx512(&batches, None, true, min_range.len())?;
-        let duration = start_time.elapsed().as_micros();
+        // let duration = start_time.elapsed().as_micros();
         // let eval: Option<Vec<TempChunk>> = None;
         if let Some(e) = eval {
             let mut accumulator = 0;
             let mut id_acc = 0;
             e.into_iter()
-            .enumerate()
-            .for_each(|(n, v)| unsafe {
+            .for_each(|v| unsafe {
                 match v {
                     TempChunk::Bitmap(b) => {
                         let popcnt = _mm512_popcnt_epi64(b);
                         let cnt = _mm512_reduce_add_epi64(popcnt);
-                        debug!("num: {:}, batch0: {:?}, batch1: {:?}", cnt, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
+                        // debug!("num: {:}, batch0: {:?}, batch1: {:?}", cnt, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
                         accumulator += cnt;
                     }
                     TempChunk::IDs(i) => {
-                        debug!("num: {:}, valid: {:?}, batch0: {:?}, batch1: {:?}", i.len(), i, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
+                        // debug!("num: {:}, valid: {:?}, batch0: {:?}, batch1: {:?}", i.len(), i, batches[0].as_ref().unwrap()[n], batches[1].as_ref().unwrap()[n]);
                         id_acc += i.len();
                     }
                     TempChunk::N0NE => {},
@@ -216,7 +228,7 @@ impl PostingBatch {
             });
             debug!("accumulator: {}", accumulator);
             // Ok(accumulator as usize + id_acc)
-            Ok(duration as usize)
+            Ok(accumulator as usize + id_acc)
         } else {
             Ok(0)
         }
@@ -409,7 +421,6 @@ impl PostingBatch {
 
     pub fn space_usage(&self) -> usize {
         let mut space = 0;
-        space += size_of_val(self.schema.as_ref());
         space += self.postings
             .iter()
             .map(|v| size_of_val(v.data().buffers()[0].as_slice()))
@@ -418,7 +429,7 @@ impl PostingBatch {
     }
 
     pub fn schema(&self) -> TermSchemaRef {
-        self.schema.clone()
+        unreachable!()
     }
 
     pub fn range(&self) -> &BatchRange {
@@ -449,24 +460,29 @@ impl Index<&str> for PostingBatch {
 
 #[derive(Serialize, Deserialize)]
 pub struct PostingBatchBuilder {
+    base: u32,
     current: u32,
-    pub term_dict: BTreeMap<String, Vec<(u32, u8)>>,
+    pub term_dict: Option<BTreeMap<String, Vec<(u32, u8)>>>,
     term_num: usize,
+    // builder for construting term index
+    pub term_idx: Option<BTreeMap<String, TermMetaBuilder>>,
 }
 
 impl PostingBatchBuilder {
-    pub fn new() -> Self {
+    pub fn new(base: u32) -> Self {
         Self { 
+            base,
             current: 0,
-            term_dict: BTreeMap::new(),
+            term_dict: Some(BTreeMap::new()),
             term_num: 0,
+            term_idx: Some(BTreeMap::new()),
         }
     }
 
     /// Clean the inner in-memory buffer data.
     pub fn clear(&mut self) {
+        self.base += self.current + 1;
         self.current = 0;
-        self.term_dict.clear();
         self.term_num = 0;
     }
 
@@ -482,8 +498,9 @@ impl PostingBatchBuilder {
     }
 
     pub fn push_term(&mut self, term: String, doc_id: u32) -> Result<()> {
-        let off = doc_id;
-        let entry = self.term_dict
+        let off = doc_id - self.base;
+        self.term_idx.as_mut().unwrap().entry(term.clone()).or_insert(TermMetaBuilder::new(0, 0));
+        let entry = self.term_dict.as_mut().unwrap()
             .entry(term)
             .or_insert(vec![(off, 0)]);
         if entry.last().unwrap().0 ==  off {
@@ -493,17 +510,19 @@ impl PostingBatchBuilder {
         } else {
             entry.push((off, 1));
         }
-        self.current = doc_id;
+        self.current = off;
         self.term_num += 1;
         Ok(())
     }
 
-    pub fn build(self) -> Result<PostingBatch> {
-        self.build_with_idx(None, 0)
+    pub fn build(&mut self) -> Result<PostingBatch> {
+        self.build_with_idx(None)
     }
 
-    pub fn build_with_idx(self, idx: Option<&RefCell<BTreeMap<String, TermMetaBuilder>>>, partition_num: usize) -> Result<PostingBatch> {
-        let term_dict = self.term_dict;
+    pub fn build_with_idx(&mut self, mut with_idx: Option<&mut BTreeMap<String, TermMetaBuilder>>) -> Result<PostingBatch> {
+        let term_dict = self.term_dict.take().unwrap();
+        self.term_dict = Some(BTreeMap::new());
+
         let mut schema_list = Vec::new();
         let mut postings: Vec<Arc<PostingList>> = Vec::new();
         let mut freqs = Vec::new();
@@ -517,8 +536,13 @@ impl PostingBatchBuilder {
                 let mut cnter = 0;
                 let mut builder_len = 0;
                 let mut batch_num = 0;
-                if idx.is_some() {
-                    idx.as_ref().unwrap().borrow_mut().get_mut(&k).unwrap().add_idx(i as u32, partition_num);
+                let entry = self.term_idx.as_mut().unwrap().get_mut(&k).unwrap();
+                entry.add_idx(i as u32, 0);
+                with_idx.as_mut().map(|v| 
+                    v.entry(k.clone()).and_modify(|v| v.add_idx(i as u32, 0))
+                );
+                if let Some(vv) = v.first() {
+                   entry.set_true(vv.0 as usize/ 512, 0, vv.0);
                 }
                 let mut binary_buffer: Vec<Vec<u8>> = Vec::new();
                 let mut buffer: Vec<u16> = Vec::with_capacity(512);
@@ -534,10 +558,11 @@ impl PostingBatchBuilder {
                         freq_buffer.push(f);
                         freq_num += 1;
                     } else {
+                        entry.set_true(p as usize/ 512, 0, p);
                         let skip_num = (p - cnter) / 512;
                         cnter += skip_num * 512;
                         batch_num += 1;
-                        if buffer.len() > 32 {
+                        if buffer.len() > 8 {
                             bitmap_num += 1;
                             let mut bitmap: Vec<u64> = vec![0; 8];
                             for i in &buffer {
@@ -570,6 +595,7 @@ impl PostingBatchBuilder {
                 });
 
                 if buffer.len() > 0 {
+                    entry.set_true(buffer[0] as usize/ 512, 0, buffer[0] as u32 + 512);
                     if buffer.len() > 8 {
                         let mut bitmap: Vec<u64> = vec![0; 8];
                         for i in &buffer {
@@ -610,17 +636,28 @@ impl PostingBatchBuilder {
         info!("binary len: {:}", binary_num);
         schema_list.push(Field::new("__id__", DataType::UInt32, false));
         postings.push(Arc::new(PostingList::from(vec![] as Vec<&[u8]>)));
+        let term_index_iter = self.term_idx.take().unwrap()
+            .into_iter()
+            .map(|(k, v)| {
+                (k, v.build())
+            });
+        let term_index = TermIdx {
+            term_map: BTreeMap::from_iter(term_index_iter)
+        };
+        self.term_idx = Some(BTreeMap::new());
+
         PostingBatch::try_new_with_freqs(
-            Arc::new(Schema::new(schema_list)),
             postings,
+            Arc::new(term_index),
             freqs,
-            vec![],
-            Arc::new(BatchRange::new(0, 512))
+            Arc::new(BatchRange::new(self.base, self.base + self.current + 1))
         )
     }
 
-    pub fn build_mmap_segment(self, _partition_num: usize) -> Result<PostingSegment> {
-        let term_dict = self.term_dict;
+    pub fn build_mmap_segment(&mut self, _partition_num: usize) -> Result<PostingSegment> {
+        let term_dict = self.term_dict.take().unwrap();
+        self.term_dict = Some(BTreeMap::new());
+
         let mut schema_list = Vec::new();
         let mut postings: Vec<PostingColumn> = Vec::new();
         // let mut freqs = Vec::new();
@@ -710,18 +747,120 @@ impl PostingBatchBuilder {
     }
 }
 
-// #[inline]
-// fn clear_lowest_set_bit(v: u64) -> u64 {
-//     unsafe { _blsr_u64(v) }
-// }
+/// Core operation of merging two posting batches.
+pub fn merge_segments(batches: Vec<Arc<PostingBatch>>) -> Result<Arc<PostingBatch>> {
+    assert!(batches.len() > 1, "Should merge multiple segments greater than 2");
+    let mut cnt = 0;
+    let mut intervals = vec![];
+    for i in &batches {
+        intervals.push(cnt / 512);
+        cnt += i.range().len();
+    }
+    debug!("intervals: {:?}", intervals);
 
+    let range = Arc::new(BatchRange::new(
+        batches.first().unwrap().range.start,
+        batches.last().unwrap().range.end,
+    ));
+
+    let mut terms = batches.iter()
+        .enumerate()
+        .map(|(i, it)| {
+            it.term_idx.term_map.iter()
+            .map(|v| (i, v.0, v.1))
+            .collect::<Vec<_>>()
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+    terms.sort_by(|a, b| 
+        a.1.cmp(b.1).then_with(|| a.0.cmp(&b.0)));
+    debug!("merged terms: {:?}", terms);
+    let mut postings = vec![];
+    let mut term_idx = BTreeMap::new();
+
+    let mut current: (usize, &String) = (terms[0].0, terms[0].1);
+    let mut merge_batches = Vec::with_capacity(batches.len());
+    merge_batches.push(&terms[0]);
+    let mut ii = 0;
+    let mut item = &terms[1];
+    let mut flush = false;
+    // for (ii, item) in terms[1..].iter().enumerate() {
+    loop {
+        if item.1 > current.1 || flush {
+            // merge batches
+            if merge_batches.len() == 1  {
+                let mut meta = merge_batches[0].2.clone();
+                if current.0 != 0 {
+                    let interval = intervals[current.0];
+                    let bitmap = RoaringBitmap::from_sorted_iter(
+                        meta.valid_bitmap.iter().map(|v| v + interval)).unwrap();
+                    meta.valid_bitmap = Arc::new(bitmap);
+                }
+                meta.index = postings.len() as u32;
+                term_idx.insert(current.1.clone(), meta);
+                postings.push(batches[current.0].postings[merge_batches[0].2.index as usize].clone());
+            } else {
+                // debug!("batches when merging: {:?}", merge_batches);
+                let bitmap = RoaringBitmap::from_sorted_iter(
+                    merge_batches.iter()
+                    .map(|v| v.2.valid_bitmap.iter().map(|i| i + intervals[v.0]))
+                    .flatten()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                ).unwrap();
+                let meta = TermMeta {
+                    valid_bitmap: Arc::new(bitmap),
+                    index: postings.len() as u32,
+                    nums: 0,
+                    selectivity: 0.,
+                };
+                // merge posting lists
+                // If the last batch is smaller than 512, we should re
+                let mut postings_tmp = vec![];
+                let mut byte_num = 0;
+                let mut item_num = 0;
+                merge_batches.iter()
+                .for_each(|v| {
+                    let posting = batches[v.0].postings[v.2.index as usize].clone();
+                    byte_num += posting.len();
+                    item_num += posting.value_offsets().len();
+                    postings_tmp.push(posting);
+                });
+                let mut builder = GenericBinaryBuilder::with_capacity(item_num, byte_num);
+                for p in postings_tmp {
+                    for i in p.iter() {
+                        builder.append_value(i.unwrap());
+                    }
+                }
+                postings.push(Arc::new(builder.finish()));
+                term_idx.insert(current.1.clone(), meta);
+            }
+            current = (item.0, item.1);
+            merge_batches.clear();
+            merge_batches.push(&item);
+        } else {
+            merge_batches.push(&item);
+        }
+        if flush {
+            break;
+        }
+        if ii >= terms.len() - 2 && merge_batches.len() > 0 {
+            flush = true;
+            continue;
+        }
+        ii += 1;
+        item = &terms[ii + 1];
+    }
+    let term_idx = Arc::new(TermIdx{ term_map: term_idx });
+    Ok(Arc::new(PostingBatch::try_new(postings, term_idx, range).unwrap()))
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct TermMetaBuilder {
-    pub distribution: Vec<Vec<u64>>,
-    pub valid_bitmap: Vec<RoaringBitmap>,
-    pub nums: Vec<u32>,
-    idx: Vec<Option<u32>>,
+    pub distribution: Vec<u64>,
+    pub valid_bitmap: RoaringBitmap,
+    pub nums: u32,
+    idx: u32,
     partition_num: usize,
     bounder: Option<u32>,
 }
@@ -730,30 +869,30 @@ impl TermMetaBuilder {
     pub fn new(_batch_num: usize, partition_num: usize) -> Self {
         Self {
             distribution: vec![],
-            valid_bitmap: vec![RoaringBitmap::new(); partition_num],
-            nums: vec![0; partition_num],
-            idx: vec![None; partition_num],
+            valid_bitmap: RoaringBitmap::new(),
+            nums: 0,
+            idx: u32::MAX,
             partition_num,
             bounder: None,
         }
     }
 
-    pub fn set_true(&mut self, i: usize, partition_num: usize, id: u32) {
+    pub fn set_true(&mut self, i: usize, _partition_num: usize, id: u32) {
         if self.bounder.is_none() || id > self.bounder.unwrap() {
-            self.nums[partition_num] += 1;
+            self.nums += 1;
             self.bounder = Some(id);
         }
         // Add doc_id to valid_bitmap
-        self.valid_bitmap[partition_num].insert(i as u32);
+        self.valid_bitmap.insert(i as u32);
     }
 
-    pub fn add_idx(&mut self, idx: u32, partition_num: usize) {
-        self.idx[partition_num] = Some(idx);
+    pub fn add_idx(&mut self, idx: u32, _partition_num: usize) {
+        self.idx = idx;
     }
 
     pub fn rle_usage(&self) -> usize {
-        let mut builder = PrimitiveRunBuilder::<Int64Type, Int64Type>::with_capacity(self.distribution[0].len());
-        for i in &self.distribution[0] {
+        let mut builder = PrimitiveRunBuilder::<Int64Type, Int64Type>::with_capacity(self.distribution.len());
+        for i in &self.distribution {
             builder.append_value(*i as i64);
         }
         let array: Int64RunArray = builder.finish();
@@ -761,17 +900,12 @@ impl TermMetaBuilder {
     }
 
     pub fn build(self) -> TermMeta {
-        let valid_bitmap: Vec<Arc<RoaringBitmap>> = self.valid_bitmap
-            .into_iter()
-            .map(Arc::new)
-            .collect();
-        let valid_batch_num: usize = valid_bitmap.iter()
-            .map(|d| d.len() as usize)
-            .sum();
-        let sel = self.nums.iter().map(|v| *v).sum::<u32>() as f64 / (512. * valid_batch_num as f64);
+        let valid_bitmap: Arc<RoaringBitmap> = Arc::new(self.valid_bitmap);
+        let valid_batch_num: usize = valid_bitmap.len() as usize;
+        let sel =   self.nums as f64 / (512. * valid_batch_num as f64);
         TermMeta {
-            valid_bitmap: Arc::new(valid_bitmap),
-            index: Arc::new(self.idx),
+            valid_bitmap,
+            index: self.idx,
             nums: self.nums,
             selectivity: sel,
         }

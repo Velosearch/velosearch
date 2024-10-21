@@ -99,6 +99,7 @@ impl<T: Clone+Send+Sync+'static> AHTrie<T> {
     }
 
     #[inline]
+    #[allow(unused)]
     async fn trace(&self, key: &str) {
         debug!("start tracing");
         let map: Arc<DashMap<String, AccessStatistics>> = Arc::clone(&self.sampling_stat);
@@ -137,6 +138,7 @@ impl<T: Clone+Send+Sync+'static> AHTrie<T> {
     }
 }
 
+#[allow(unused)]
 async fn convert_encoding<T: Clone+Send+Sync>(ah_trie_root: Arc<RwLock<AHTrieInner<T>>>, key: &str, encoding: Encoding) {
     let cur_encoding = ah_trie_root.read().unwrap().encoding(&key);
     match (cur_encoding, encoding) {

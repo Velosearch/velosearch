@@ -223,26 +223,27 @@ impl LogicalPlanBuilder {
 
         let schema = table_source.schema();
 
-        let projected_schema = projection
-            .as_ref()
-            .map(|p| {
-                DFSchema::new_with_metadata(
-                    p.iter()
-                        .enumerate()
-                        .map(|(n, i)| {
-                            if *i == usize::MAX {
-                                DFField::from_qualified(&table_name, Field::new(String::from(format!("__NULL__{:}", n)), DataType::Boolean, false))
-                            } else {
-                                DFField::from_qualified(&table_name, schema.field(*i).clone())
-                            }
-                        })
-                        .collect(),
-                    schema.metadata().clone(),
-                )
-            })
-            .unwrap_or_else(|| {
-                DFSchema::try_from_qualified_schema(&table_name, &schema)
-            })?;
+        // let projected_schema = projection
+        //     .as_ref()
+        //     .map(|p| {
+        //         DFSchema::new_with_metadata(
+        //             p.iter()
+        //                 .enumerate()
+        //                 .map(|(n, i)| {
+        //                     if *i == usize::MAX {
+        //                         DFField::from_qualified(&table_name, Field::new(String::from(format!("__NULL__{:}", n)), DataType::Boolean, false))
+        //                     } else {
+        //                         DFField::from_qualified(&table_name, schema.field(*i).clone())
+        //                     }
+        //                 })
+        //                 .collect(),
+        //             schema.metadata().clone(),
+        //         )
+        //     })
+        //     .unwrap_or_else(|| {
+        //         DFSchema::try_from_qualified_schema(&table_name, &schema)
+        //     })?;
+        let projected_schema = DFSchema::empty();
 
         let table_scan = LogicalPlan::TableScan(TableScan {
             table_name,
@@ -320,7 +321,11 @@ impl LogicalPlanBuilder {
     }
 
     /// Apply a boolean query
-    pub fn boolean(self, expr: impl Into<Expr>, is_score: bool) -> Result<Self> {
+    pub fn boolean(
+        self,
+        expr: impl Into<Expr>,
+        is_score: bool,
+        projected_terms: Vec<String>) -> Result<Self> {
         debug!("Apply a boolean query");
         // let expr = normalize_col(expr.into(), &self.plan)?;
         Ok(Self::from(LogicalPlan::Boolean(Boolean::try_new(
@@ -329,6 +334,7 @@ impl LogicalPlanBuilder {
             0,
             is_score,
             Arc::new(self.plan),
+            projected_terms,
         )?)))
     }
 

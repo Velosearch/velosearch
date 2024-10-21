@@ -243,10 +243,12 @@ impl<'a> LoudsSparseIterator<'a> {
         self.pos_in_trie[level] = pos;
     }
 
+    #[allow(unused)]
     pub(crate) fn is_valid(&self) -> bool {
         self.is_valid
     }
 
+    #[allow(unused)]
     pub(crate) fn set_start_node_num(&mut self, node_num: PosT) {
         self.start_node_num = node_num;
     }

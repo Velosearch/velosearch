@@ -8,7 +8,7 @@ use log::debug;
 use crate::{PhysicalExpr, expressions::{Column, BinaryExpr}};
 use arrow::{datatypes::{DataType, Schema}, array::{Array, ArrayRef, BooleanArray, UInt32Array, ArrayData}, 
     compute::cast, record_batch::RecordBatch};
-use datafusion_common::{DataFusionError, TermMeta};
+use datafusion_common::DataFusionError;
 use sorted_iter::*;
 use sorted_iter::assume::*;
 

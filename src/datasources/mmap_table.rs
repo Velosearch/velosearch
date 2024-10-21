@@ -312,7 +312,7 @@ impl MmapExec {
         let projected_schema = project_schema(&schema, projection.as_ref())?;
         let (distris, indices ) = projected_term_meta.iter()
             .map(| v| match v {
-                Some(v) => (Some(v.valid_bitmap[0].clone()), v.index[0].clone() ),
+                Some(v) => (Some(v.valid_bitmap.clone()), Some(v.index)),
                 None => (None, None),
             })
             .unzip();

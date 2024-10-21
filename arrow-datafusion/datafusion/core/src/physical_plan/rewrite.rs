@@ -20,7 +20,7 @@
 use crate::physical_plan::with_new_children_if_necessary;
 use crate::physical_plan::ExecutionPlan;
 use datafusion_common::Result;
-use tracing::debug;
+
 
 use std::sync::Arc;
 

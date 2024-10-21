@@ -34,13 +34,15 @@ use peg;
 // #[global_allocator]
 // static GLOBAL: Jemalloc = Jemalloc;
 lazy_static!{
-    pub static ref TOKENIZER: TextAnalyzer = TextAnalyzer::from(SimpleTokenizer)
+    pub static ref TOKENIZER: Box<TextAnalyzer> = Box::new(TextAnalyzer::builder(SimpleTokenizer::default())
     .filter(RemoveLongFilter::limit(60))
-    .filter(LowerCaser);
+    .filter(LowerCaser)
+    .build());
 }
 
 fn col_tokenized(token: &str) -> Expr {
-    let mut process = TOKENIZER.token_stream(&token);
+    let mut tokenizer = TextAnalyzer::from(SimpleTokenizer::default());
+    let mut process = tokenizer.token_stream(&token);
     let mut exprs = Vec::new();
     process.process(&mut |token| {
         exprs.push(Expr::Column(token.text.clone().into()));

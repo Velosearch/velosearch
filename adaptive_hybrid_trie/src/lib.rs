@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use fst::{MapBuilder, Map};
 pub mod ah_trie;
@@ -8,13 +8,14 @@ pub type TermIdx<T> = HashTermIdx<T>;
 #[cfg(all(feature = "trie_idx", not(feature = "hash_idx")))]
 pub type  TermIdx<T> = ah_trie::AHTrie<T>;
 
+#[derive(Debug)]
 pub struct HashTermIdx<T> {
-    pub term_map: HashMap<String, T>
+    pub term_map: BTreeMap<String, T>
 }
 
 impl<T> HashTermIdx<T> {
     pub fn new() -> Self {
-        Self { term_map: HashMap::new() }
+        Self { term_map: BTreeMap::new() }
     }
 
     pub fn get(&self, name: &str) -> Option<&T> {
@@ -27,33 +28,29 @@ impl<T> HashTermIdx<T> {
 }
 
 
-pub struct FSTIdx<T> {
+pub struct FSTIdx {
     inner_: Map<Vec<u8>>,
-    values: Vec<T>
 }
 
-impl<T> FSTIdx<T> {
-    pub fn get(&self, name: &str) -> Option<&T> {
-        todo!()
+impl FSTIdx {
+    pub fn get(&self, name: &str) -> Option<u64> {
+        self.inner_.get(name)
     }
 }
 
-pub struct FSTIdxBuilder<T> {
+pub struct FSTIdxBuilder {
     builder: MapBuilder<Vec<u8>>,
-    values: Vec<T>
 }
 
-impl<T> FSTIdxBuilder<T> {
+impl FSTIdxBuilder {
     pub fn new() -> Self {
         Self {
             builder: MapBuilder::memory(),
-            values: vec![],
         }
     }
 
-    pub fn insert(&mut self, term: String, value: T) {
-        self.builder.insert(term, self.values.len() as u64).unwrap();
-        self.values.push(value);
+    pub fn insert(&mut self, term: String, index: u64) {
+        self.builder.insert(term, index).unwrap();
     }
 }
 

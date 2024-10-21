@@ -26,7 +26,7 @@ pub use crate::common::{ColumnStatistics, Statistics};
 use crate::error::Result;
 use crate::physical_plan::expressions::PhysicalSortExpr;
 
-use arrow::datatypes::{SchemaRef, DataType, Field, Schema};
+use arrow::datatypes::{SchemaRef, Schema};
 use arrow::record_batch::RecordBatch;
 
 pub use datafusion_expr::Accumulator;
@@ -34,7 +34,6 @@ pub use datafusion_expr::ColumnarValue;
 pub use datafusion_physical_expr::aggregate::row_accumulator::RowAccumulator;
 pub use display::DisplayFormatType;
 use futures::stream::Stream;
-use log::debug;
 use std::fmt;
 use std::fmt::Debug;
 

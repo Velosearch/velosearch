@@ -6,13 +6,12 @@ use std::sync::Arc;
 use datafusion::{
     physical_optimizer::PhysicalOptimizerRule, 
     physical_plan::{rewrite::{TreeNodeRewriter, RewriteRecursion, TreeNodeRewritable}, 
-    ExecutionPlan, boolean::BooleanExec, PhysicalExpr}, arrow::datatypes::Schema, common::TermMeta,
+    ExecutionPlan, boolean::BooleanExec, PhysicalExpr}, arrow::datatypes::{Schema, Field, DataType},
 };
 use datafusion::common::Result;
-use roaring::RoaringBitmap;
-use tracing::{debug, info};
+use tracing::debug;
 
-use crate::{datasources::{mmap_table::MmapExec, posting_table::PostingExec, ExecutorWithMetadata}, physical_expr::BooleanEvalExpr};
+use crate::{datasources::{mmap_table::MmapExec, posting_table::PostingExec}, physical_expr::BooleanEvalExpr};
 
 /// Pruning invalid batches transform rule that gets the minimal valid range of CNF predicate.
 #[derive(Default)]
@@ -45,21 +44,19 @@ impl PhysicalOptimizerRule for MinOperationRange {
 
 #[derive(Clone)]
 struct GetMinRange {
-    partition_stats: Option<Vec<Option<TermMeta>>>,
     partition_schema: Option<Arc<Schema>>,
     predicate: Option<Arc<dyn PhysicalExpr>>,
     is_score: bool,
-    min_range: Option<Arc<RoaringBitmap>>,
+    projected_terms: Option<Arc<Vec<String>>>,
 }
 
 impl GetMinRange {
     fn new() -> Self {
         Self {
-            partition_stats: None,
             partition_schema: None,
             predicate: None,
             is_score: false,
-            min_range: None,
+            projected_terms: None,
         }
     }
 }
@@ -71,93 +68,98 @@ impl TreeNodeRewriter<Arc<dyn ExecutionPlan>> for GetMinRange {
         let any_node = node.as_any();
         if let Some(boolean) = any_node.downcast_ref::<BooleanExec>() {
             debug!("Pre_visit BooleanExec");
-            self.partition_schema = Some(boolean.input.schema().clone());
+            let fields: Vec<Field> = boolean.projected_terms.iter()
+                .map(|f| Field::new(f.clone(), DataType::Date64, false))
+                .collect();
+            let projected_schema = Arc::new(Schema::new(fields));
+            self.partition_schema = Some(projected_schema);
             self.predicate = Some(boolean.predicate().clone());
             self.is_score = boolean.is_score;
+            self.projected_terms = Some(boolean.projected_terms.clone());
             Ok(RewriteRecursion::Continue)
-        } else if let Some(posting) = any_node.downcast_ref::<PostingExec>(){
+        } else if let Some(_posting) = any_node.downcast_ref::<PostingExec>(){
             debug!("Pre_visit PostingExec");
-            let projected_schema = self.partition_schema.as_ref().unwrap().clone();
-            let project_terms: Vec<&str> = projected_schema.fields().into_iter().map(|f| f.name().as_str()).collect();
-            let term_stats: Vec<Option<TermMeta>> = posting.term_metas_of(&project_terms);
-            debug!("collect partition range");
-            let partition_range  = {
-                let mut length = None;
-                for v in &term_stats {
-                    if let Some(t) = v {
-                        length = Some(t.valid_bitmap.as_ref().len());
-                    }
-                }
-                if let Some(_length) = length {
-                    let invalid = Arc::new(RoaringBitmap::new());
-                    let roarings: Vec<Arc<RoaringBitmap>> = term_stats.iter()
-                        .map(|t| {
-                            let res = match t {
-                                Some(t) => t.valid_bitmap[0].clone(),
-                                None => invalid.clone(),
-                            };
-                            res
-                        })
-                        .collect();
-                    info!("distri: {:?}", roarings);
-                    match self.predicate.as_ref().unwrap().as_any().downcast_ref::<BooleanEvalExpr>() {
-                        Some(p) => {
-                            p.eval_bitmap(&roarings)?
-                        }
-                        None => unreachable!(),
-                    }
-                } else {
-                    Arc::new(RoaringBitmap::new())
-                }
-            };
-            debug!("partition range: {:?}", partition_range);
-            debug!("Collect term statistics");
-            // debug!("partition 0 min_range len: {:?}", partition_range[0].true_count());
-            self.min_range = Some(partition_range);
-            self.partition_stats = Some(term_stats);
-            debug!("End Pre_visit PostingExec");
+            // let projected_schema = self.partition_schema.as_ref().unwrap().clone();
+            // let project_terms: Vec<&str> = projected_schema.fields().into_iter().map(|f| f.name().as_str()).collect();
+            // let term_stats: Vec<Option<TermMeta>> = posting.term_metas_of(&project_terms);
+            // debug!("collect partition range");
+            // let partition_range  = {
+            //     let mut length = None;
+            //     for v in &term_stats {
+            //         if let Some(t) = v {
+            //             length = Some(t.valid_bitmap.as_ref().len());
+            //         }
+            //     }
+            //     if let Some(_length) = length {
+            //         let invalid = Arc::new(RoaringBitmap::new());
+            //         let roarings: Vec<Arc<RoaringBitmap>> = term_stats.iter()
+            //             .map(|t| {
+            //                 let res = match t {
+            //                     Some(t) => t.valid_bitmap.clone(),
+            //                     None => invalid.clone(),
+            //                 };
+            //                 res
+            //             })
+            //             .collect();
+            //         info!("distri: {:?}", roarings);
+            //         match self.predicate.as_ref().unwrap().as_any().downcast_ref::<BooleanEvalExpr>() {
+            //             Some(p) => {
+            //                 p.eval_bitmap(&roarings)?
+            //             }
+            //             None => unreachable!(),
+            //         }
+            //     } else {
+            //         Arc::new(RoaringBitmap::new())
+            //     }
+            // };
+            // debug!("partition range: {:?}", partition_range);
+            // debug!("Collect term statistics");
+            // // debug!("partition 0 min_range len: {:?}", partition_range[0].true_count());
+            // self.min_range = Some(partition_range);
+            // self.partition_stats = Some(term_stats);
+            // debug!("End Pre_visit PostingExec");
             Ok(RewriteRecursion::Continue)
-        } else if let Some(posting) = any_node.downcast_ref::<MmapExec>() {
+        } else if let Some(_posting) = any_node.downcast_ref::<MmapExec>() {
             debug!("Pre_visit PostingExec");
-            let projected_schema = self.partition_schema.as_ref().unwrap().clone();
-            let project_terms: Vec<&str> = projected_schema.fields().into_iter().map(|f| f.name().as_str()).collect();
-            let term_stats: Vec<Option<TermMeta>> = posting.term_metas_of(&project_terms);
-            debug!("collect partition range");
-            let partition_range  = {
-                let mut length = None;
-                for v in &term_stats {
-                    if let Some(t) = v {
-                        length = Some(t.valid_bitmap.as_ref().len());
-                    }
-                }
-                if let Some(_length) = length {
-                    let invalid = Arc::new(RoaringBitmap::new());
-                    let roarings: Vec<Arc<RoaringBitmap>> = term_stats.iter()
-                        .map(|t| {
-                            let res = match t {
-                                Some(t) => t.valid_bitmap[0].clone(),
-                                None => invalid.clone(),
-                            };
-                            res
-                        })
-                        .collect();
-                    info!("distri: {:?}", roarings);
-                    match self.predicate.as_ref().unwrap().as_any().downcast_ref::<BooleanEvalExpr>() {
-                        Some(p) => {
-                            p.eval_bitmap(&roarings)?
-                        }
-                        None => unreachable!(),
-                    }
-                } else {
-                    Arc::new(RoaringBitmap::new())
-                }
-            };
-            debug!("partition range: {:?}", partition_range);
-            debug!("Collect term statistics");
+            // let projected_schema = self.partition_schema.as_ref().unwrap().clone();
+            // let project_terms: Vec<&str> = projected_schema.fields().into_iter().map(|f| f.name().as_str()).collect();
+            // let term_stats: Vec<Option<TermMeta>> = posting.term_metas_of(&project_terms);
+            // debug!("collect partition range");
+            // let partition_range  = {
+            //     let mut length = None;
+            //     for v in &term_stats {
+            //         if let Some(t) = v {
+            //             length = Some(t.valid_bitmap.as_ref().len());
+            //         }
+            //     }
+            //     if let Some(_length) = length {
+            //         let invalid = Arc::new(RoaringBitmap::new());
+            //         let roarings: Vec<Arc<RoaringBitmap>> = term_stats.iter()
+            //             .map(|t| {
+            //                 let res = match t {
+            //                     Some(t) => t.valid_bitmap[0].clone(),
+            //                     None => invalid.clone(),
+            //                 };
+            //                 res
+            //             })
+            //             .collect();
+            //         info!("distri: {:?}", roarings);
+            //         match self.predicate.as_ref().unwrap().as_any().downcast_ref::<BooleanEvalExpr>() {
+            //             Some(p) => {
+            //                 p.eval_bitmap(&roarings)?
+            //             }
+            //             None => unreachable!(),
+            //         }
+            //     } else {
+            //         Arc::new(RoaringBitmap::new())
+            //     }
+            // };
+            // debug!("partition range: {:?}", partition_range);
+            // debug!("Collect term statistics");
             // debug!("partition 0 min_range len: {:?}", partition_range[0].true_count());
-            self.min_range = Some(partition_range);
-            self.partition_stats = Some(term_stats);
-            debug!("End Pre_visit PostingExec");
+            // self.min_range = Some(partition_range);
+            // self.partition_stats = Some(term_stats);
+            // debug!("End Pre_visit PostingExec");
             Ok(RewriteRecursion::Continue)
         } else {
             Ok(RewriteRecursion::Continue)
@@ -185,25 +187,25 @@ impl TreeNodeRewriter<Arc<dyn ExecutionPlan>> for GetMinRange {
             )
         } else if let Some(posting) = node.as_any().downcast_ref::<PostingExec>() {
             debug!("Mutate PostingExec");
-            let min_range = self.min_range.take();
+            // let min_range = self.min_range.take();
             let mut exec = posting.clone();
             debug!("is_score: {}", self.is_score);
             exec.is_score = self.is_score;
-            let min_range_len = min_range.as_ref().unwrap().len() as usize;
-            exec.partitions_num = if exec.partitions_num * 512 > min_range_len {
-                (min_range_len + 1024) / 1024
-            } else {
-                exec.partitions_num
-            };
-            let (distris, indices) = exec.projected_term_meta.iter()
-            .map(| v| match v {
-                Some(v) => (Some(v.valid_bitmap[0].clone()), v.index[0].clone() ),
-                None => (None, None),
-            })
-            .unzip();
-            exec.distri = distris;
-            exec.idx = indices;
-            exec.partition_min_range = min_range;
+            // let min_range_len = min_range.as_ref().unwrap().len() as usize;
+            // exec.partitions_num = if exec.partitions_num * 512 > min_range_len {
+            //     (min_range_len + 1024) / 1024
+            // } else {
+            //     exec.partitions_num
+            // };
+            // let (distris, indices) = exec.projected_term_meta.iter()
+            // .map(| v| match v {
+            //     Some(v) => (Some(v.valid_bitmap.clone()), v.index.clone() ),
+            //     None => (None, None),
+            // })
+            // .unzip();
+            // exec.distri = distris;
+            // exec.idx = indices;
+            // exec.partition_min_range = min_range;
             exec.predicate = Some(self.predicate
                 .take()
                 .unwrap()
@@ -212,29 +214,31 @@ impl TreeNodeRewriter<Arc<dyn ExecutionPlan>> for GetMinRange {
                 .unwrap()
                 .clone()
             );
+            exec.projected_schema = self.partition_schema.as_ref().unwrap().clone();
+            exec.projected_terms = self.projected_terms.as_ref().unwrap().clone();
             let exec = Arc::new(exec);
             Ok(exec)
         }else if let Some(posting) = node.as_any().downcast_ref::<MmapExec>() {
             debug!("Mutate PostingExec");
-            let min_range = self.min_range.take();
+            // let min_range = self.min_range.take();
             let mut exec = posting.clone();
             debug!("is_score: {}", self.is_score);
             exec.is_score = self.is_score;
-            let min_range_len = min_range.as_ref().unwrap().len() as usize;
-            exec.partitions_num = if exec.partitions_num * 512 > min_range_len {
-                (min_range_len + 1024) / 1024
-            } else {
-                exec.partitions_num
-            };
-            let (distris, indices) = exec.projected_term_meta.iter()
-            .map(| v| match v {
-                Some(v) => (Some(v.valid_bitmap[0].clone()), v.index[0].clone() ),
-                None => (None, None),
-            })
-            .unzip();
-            exec.distri = distris;
-            exec.idx = indices;
-            exec.partition_min_range = min_range;
+            // let min_range_len = min_range.as_ref().unwrap().len() as usize;
+            // exec.partitions_num = if exec.partitions_num * 512 > min_range_len {
+            //     (min_range_len + 1024) / 1024
+            // } else {
+            //     exec.partitions_num
+            // };
+            // let (distris, indices) = exec.projected_term_meta.iter()
+            // .map(| v| match v {
+            //     Some(v) => (Some(v.valid_bitmap[0].clone()), v.index[0].clone() ),
+            //     None => (None, None),
+            // })
+            // .unzip();
+            // exec.distri = distris;
+            // exec.idx = indices;
+            // exec.partition_min_range = min_range;
             exec.predicate = Some(self.predicate
                 .take()
                 .unwrap()
@@ -243,6 +247,7 @@ impl TreeNodeRewriter<Arc<dyn ExecutionPlan>> for GetMinRange {
                 .unwrap()
                 .clone()
             );
+            exec.projected_schema = self.partition_schema.as_ref().unwrap().clone();
             let exec = Arc::new(exec);
             Ok(exec)
         } else {

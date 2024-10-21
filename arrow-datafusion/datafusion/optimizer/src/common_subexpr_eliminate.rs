@@ -181,6 +181,7 @@ impl OptimizerRule for CommonSubexprEliminate {
                         boolean.op_cnt,
                         boolean.is_score,
                         Arc::new(new_input),
+                        boolean.projected_terms.clone(),
                     )?))
                 } else {
                     return Err(DataFusionError::Internal(

@@ -1,106 +1,276 @@
 use std::{any::Any, ops::Range, sync::{atomic::{AtomicUsize, Ordering}, Arc}, task::Poll};
-
+use itertools::Itertools;
 use async_trait::async_trait;
 use datafusion::{
     arrow::{datatypes::{SchemaRef, Schema, Field, DataType}, record_batch::RecordBatch, array::UInt64Array}, 
     datasource::TableProvider, 
     logical_expr::TableType, execution::context::SessionState, prelude::Expr, error::{Result, DataFusionError}, 
-    physical_plan::{ExecutionPlan, Partitioning, DisplayFormatType, project_schema, RecordBatchStream, metrics::{ExecutionPlanMetricsSet, MetricsSet}}, common::TermMeta};
+    physical_plan::{ExecutionPlan, Partitioning, DisplayFormatType, RecordBatchStream, metrics::{ExecutionPlanMetricsSet, MetricsSet}, PhysicalExpr}, common::TermMeta};
 use futures::Stream;
-use adaptive_hybrid_trie::TermIdx;
 use roaring::RoaringBitmap;
-use serde::{Serialize, ser::SerializeStruct};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
+use crate::{batch::{PostingBatch, PostingBatchBuilder, merge_segments}, physical_expr::BooleanEvalExpr};
 
-use crate::{batch::{BatchRange, PostingBatch, PostingBatchBuilder}, physical_expr::BooleanEvalExpr};
+// Only when temp buffer size is larger than a batch size,
+// the flush operation can be auto triggered.
+const DEFAULT_THRSHOLD: usize = 512;
+const DEFAULT_LEVEL_LOG_SIZE: f64 = 0.75;
+const DEFAULT_MIN_LAYER_SIZE: u32 = 10_000;
+const DEFAULT_MIN_NUM_SEGMENTS_IN_MERGE: usize = 4;
+const DEFAULT_MAX_DOCS_BEFORE_MERGE: usize = 10_000_000;
+// The default value of 1 means that deletes are not taken in account when
+// identifying merge candidates. This is not a very sensible default: it was
+// set like that for backward compatibility and might change in the near future.
+const DEFAULT_DEL_DOCS_RATIO_BEFORE_MERGE: f32 = 1.0f32;
 
-use super::ExecutorWithMetadata;
+/// `LogMergePolicy` tries to merge segments that have a similar number of dodcuments
+#[derive(Debug, Clone)]
+pub struct LogMergePolicy {
+    min_num_segments: usize,
+    /// Set the maximum number docs in a segment for it to be considered for
+    /// merging. A segment can still reach more than max_docs, by merging many
+    /// smaller ones
+    max_docs_before_merge: usize,
+    /// Set the minimum segment size under which all segment belong
+    /// to the same level.
+    min_layer_size: u32,
+    /// Segments are grouped in levels according to their sizes.
+    /// These levels are defined as intervals of exponentially growing sizes.
+    /// level_log_size define the factor by which one should multiply the limit
+    /// to reach a level, in order to get the limit to reach the following
+    /// level.
+    level_log_size: f64,
+    /// Set the ratio of deleted documents in a segment to tolerate.
+    /// If it is exceeded by any segment at a log level, a merge
+    /// will be triggered for that level.
+    /// If there is a single segment at a level, we effectively end up expunging
+    /// deleted documents from it.
+    /// 
+    /// For now, the deletes are not taken in account when identifying merge candidates.
+    _del_docs_ratio_before_merge: f32,
+}
+
+impl LogMergePolicy {
+    fn clip_min_size(&self, size: u32) -> u32 {
+        std::cmp::max(self.min_layer_size, size)
+    }
+
+    /// Given the list of segment metas, returns the list of merge candidates.
+    ///
+    /// This call happens on the segment updater thread, and will block
+    /// other segment updates, so all implementations should happen rapidly.
+    pub fn compute_merge_candidates(&self, segments: &[SegmentMeta]) -> Vec<Vec<usize>> {
+        let size_sorted_segments = segments
+            .iter()
+            .filter(|seg| seg.num_docs() <= (self.max_docs_before_merge as u32))
+            .sorted_by_key(|seg| std::cmp::Reverse(seg.max_doc()))
+            .collect::<Vec<_>>();
+
+        if size_sorted_segments.is_empty() {
+            return vec![];
+        }
+
+        let mut current_max_log_size = f64::MAX;
+        let mut levels = vec![];
+        for (_, merge_group) in &size_sorted_segments.into_iter().group_by(|segment| {
+            let segment_log_size = f64::from(self.clip_min_size(segment.num_docs())).log2();
+            if segment_log_size < (current_max_log_size - self.level_log_size) {
+                // update current_max_log_size to create a new group
+                current_max_log_size = segment_log_size;
+            }
+            // return current_max_log_size to be grouped to the current group
+            current_max_log_size
+        }) {
+            levels.push(merge_group.collect::<Vec<_>>())
+        }
+
+        levels
+            .into_iter()
+            .filter(|level| {level.len() >= self.min_num_segments})
+            .map(|segments| segments.into_iter().map(SegmentMeta::id).collect())
+            .collect()
+    }
+}
+
+impl Default for LogMergePolicy {
+    fn default() -> Self {
+        LogMergePolicy {
+            min_num_segments: DEFAULT_MIN_NUM_SEGMENTS_IN_MERGE,
+            max_docs_before_merge: DEFAULT_MAX_DOCS_BEFORE_MERGE,
+            min_layer_size: DEFAULT_MIN_LAYER_SIZE,
+            level_log_size: DEFAULT_LEVEL_LOG_SIZE,
+            _del_docs_ratio_before_merge: DEFAULT_DEL_DOCS_RATIO_BEFORE_MERGE,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct SegmentMeta {
+    id: usize,
+    num_docs: u32,
+    max_doc: usize,
+}
+
+impl SegmentMeta {
+    pub fn from_posting(id: usize, posting: &PostingBatch) -> Self {
+        Self {
+            id,
+            num_docs: posting.batch_len() as u32,
+            max_doc: posting.range().end() as usize - 1,
+        }
+    }
+
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
+    pub fn num_docs(&self) -> u32 {
+        self.num_docs
+    }
+
+    pub fn max_doc(&self) -> usize {
+        self.max_doc
+    }
+}
 
 /// The update/delete operations add entries in the `UpdateQueue`.
 /// Update operations add entry in queue and then add new docs.
 /// Delete operations directly add entry in this queue.
 struct UpdateQueue {
-    builder: RwLock<Option<PostingBatchBuilder>>,
+    builder: RwLock<PostingBatchBuilder>,
+    doc_len: AtomicUsize,
 }
 
 impl UpdateQueue {
-    fn new() -> Self {
+    fn new(base: u32) -> Self {
         Self {
-            builder: RwLock::new(Some(PostingBatchBuilder::new())),
+            builder: RwLock::new(PostingBatchBuilder::new(base)),
+            doc_len: AtomicUsize::new(0),
         }
     }
 
     async fn add_doc(&self, doc: Vec<String>, doc_id: usize) -> Result<()> {
         self.add_docs(vec![doc], doc_id).await;
+        self.doc_len.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
 
     async fn add_docs(&self, docs: Vec<Vec<String>>, doc_id: usize) {
+        self.doc_len.fetch_add(docs.len(), Ordering::Relaxed);
         let mut doc_id = doc_id;
         let mut guard = self.builder
             .write()
             .await;
-        let builder = match guard.as_mut() {
-            Some(v) => v,
-            None => guard.insert(PostingBatchBuilder::new()),
-        };
         docs.into_iter()
-        .for_each(|doc| {
-            builder
-            .add_docs(doc, doc_id)
-            .unwrap();
-            doc_id += 1;
-        });
+            .for_each(|doc| {
+                guard
+                .add_docs(doc, doc_id)
+                .unwrap();
+                doc_id += 1;
+            });
     }
 
     async fn clear(&self) {
-        if let Some(v) =  self.builder.write().await.as_mut()  {
-            v.clear();
-        }
+        self.builder.write().await.clear();
     }
 
     /// Flush the updateQueue into a PostingBatch.
     /// The deleteQueue should flush in the PostingTable
     async fn flush(&self) -> Result<Option<PostingBatch>> {
-        let builder = self.builder.write().await.take();
+        let posting_batch = self.builder.write().await.build().ok();
         // Clear the updateQueue
         self.clear().await;
-        let posting_batch = builder.map(PostingBatchBuilder::build)
-            .transpose()
-            .unwrap();
         Ok(posting_batch)
     }
+}
+
+#[derive(PartialEq, Eq)]
+enum SegmentsState {
+    Merging,
+    Normal,
 }
 
 /// The implementation of vectorized table provider of Cocoa.
 pub struct PostingTable {
     schema: SchemaRef,
-    term_idx: Arc<TermIdx<TermMeta>>,
-    postings: RwLock<Vec<Arc<PostingBatch>>>,
+    postings: Arc<RwLock<Vec<Arc<PostingBatch>>>>,
     pub partitions_num: AtomicUsize,
     update_queue: Arc<UpdateQueue>,
     doc_id: AtomicUsize,
+    merge_policy: LogMergePolicy,
+    state: Arc<RwLock<SegmentsState>>,
 }
 
 impl PostingTable {
     pub fn new(
         schema: SchemaRef,
-        term_idx: Arc<TermIdx<TermMeta>>,
         batches: Vec<Arc<PostingBatch>>,
-        _range: &BatchRange,
         partitions_num: usize,
     ) -> Self {
         // construct field map to index the position of the fields in schema
-        let doc_id = batches.last().unwrap().range().end();
+        let doc_id = batches.last().map_or(0, |v| v.range().end());
         Self {
             schema,
-            term_idx,
-            postings: RwLock::new(batches),
+            postings: Arc::new(RwLock::new(batches)),
             partitions_num: AtomicUsize::new(partitions_num),
-            update_queue: Arc::new(UpdateQueue::new()),
+            update_queue: Arc::new(UpdateQueue::new(doc_id)),
             doc_id: AtomicUsize::new(doc_id as usize),
+            merge_policy: LogMergePolicy::default(),
+            state: Arc::new(RwLock::new(SegmentsState::Normal)),
         }
+    }
+
+    pub async fn segment_num(&self) -> usize {
+        return self.postings.read().await.len();
+    }
+
+    /// Pick merges that are now required.
+    /// Return the indexes of picked segments.
+    pub async fn find_merges(&self) -> Vec<Vec<usize>> {
+        let guard = self.postings.read().await;
+        let metas = guard.iter()
+            .enumerate()
+            .map(|(id, batch)| SegmentMeta::from_posting(id, batch))
+            .collect::<Vec<_>>();
+        self.merge_policy.compute_merge_candidates(&metas)
+    }
+
+    pub async fn schedule_merge(&self) {
+        if *self.state.read().await == SegmentsState::Merging { return; }
+        let guard = self.postings.read().await;
+
+        let merge_specification = self.find_merges().await;
+        if merge_specification.len() == 0 { return; }
+        let start_off = merge_specification.last().unwrap()
+            .iter()
+            .min()
+            .cloned().unwrap();
+        debug!("Merge specification: {:?}", merge_specification);
+        let merge_specification = merge_specification.into_iter()
+            .map(|group| {
+                group.into_iter()
+                    .map(|v| guard[v].clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        *self.state.write().await = SegmentsState::Merging;
+        let postings_ref = self.postings.clone();
+        let state_ref = self.state.clone();
+        // async merging
+        tokio::task::spawn(async move {
+            debug!("Start background segment merging task");
+            let mut segments = merge_specification.into_iter()
+                .map(|group| {
+                    merge_segments(group).unwrap()
+                })
+                .collect::<Vec<_>>();
+            let mut guard = postings_ref.write().await;
+            guard.drain(start_off..);
+            guard.append(&mut segments);
+            *state_ref.write().await = SegmentsState::Normal;
+            debug!("Finish background segment merging task");
+        });
     }
 
     /// Add document into update_queue
@@ -111,14 +281,31 @@ impl PostingTable {
 
     /// Add batched documents into update_queue
     pub async fn add_documents(&self, docs: Vec<Vec<String>>) {
-        self.update_queue.add_docs(docs, self.doc_id.load(Ordering::Relaxed)).await;
+        self.update_queue.add_docs(docs, self.doc_id.fetch_add(512, Ordering::Relaxed)).await;
+    }
+
+    /// Delete documents
+    pub async fn delete_document(&self, doc_id: u32) {
+        let guard = self.postings.write().await;
+        let batch = guard.iter().find_map(|s| {
+            if doc_id >= s.range().start() && doc_id < s.range().end() {
+                Some(s)
+            } else {
+                None
+            }
+        });
+        if let Some(batch) = batch {
+            batch.delete(doc_id  - batch.range().start());
+        }
     }
 
     /// Commit the modifications in update queue.
     /// 1. flush the update queue.
     /// 2. merge the segments according to merge policy.
     pub async fn commit(&self) {
-        self.flush().await;
+        if self.update_queue.doc_len.load(Ordering::Relaxed) >= DEFAULT_THRSHOLD {
+            self.flush().await;
+        }
     }
 
     /// Force to flush the in-memory updateQueue into compact PostingBatch
@@ -134,27 +321,26 @@ impl PostingTable {
             .await
             .push(Arc::new(batch));
         }
-    }
 
-    /// Force to merge segments indicated by the `segments` index vector.
-    pub fn merge(&self, _segments: Vec<usize>) {
-        todo!()
+        self.schedule_merge().await;
     }
 
     #[inline]
-    pub fn stat_of(&self, term_name: &str, _partition: usize) -> Option<TermMeta> {
+    pub async fn stat_of(&self, term_name: &str, partition: usize) -> Option<TermMeta> {
         #[cfg(feature="trie_idx")]
         let meta = self.term_idx.get(term_name);
         #[cfg(feature="hash_idx")]
-        let meta = self.term_idx.get(term_name).cloned();
+        let meta = self.postings.read().await[partition].term_idx.get(term_name).cloned();
         meta
     }
 
-    pub fn stats_of(&self, term_names: &[&str], partition: usize) -> Vec<Option<TermMeta>> {
-        term_names
-            .into_iter()
-            .map(|v| self.stat_of(v, partition))
-            .collect()
+    pub async fn stats_of(&self, term_names: &[&str], partition: usize) -> Vec<Option<TermMeta>> {
+        let mut metas = vec![];
+        let guard = self.postings.read().await;
+        for term in term_names {
+            metas.push(guard[partition].term_idx.get(term).cloned())
+        }
+        return metas;
     }
 
     pub fn memory_consumption(&self) -> usize {
@@ -172,17 +358,6 @@ impl PostingTable {
         info!("posting size: {:}", postings);
         info!("offsets size: {:}", offsets);
         all
-    }
-}
-
-impl Serialize for PostingTable {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer {
-        let mut state = serializer.serialize_struct("PostingTable", 4)?;
-        state.serialize_field("schema", &self.schema)?;
-        
-        state.end()
     }
 }
 
@@ -204,28 +379,21 @@ impl TableProvider for PostingTable {
     async fn scan(
         &self,
         _state: &SessionState,
-        projection: Option<&Vec<usize>>,
+        _projection: Option<&Vec<usize>>,
         _filters: &[Expr],
         _limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         debug!("PostingTable scan");
         let posting_guard = self.postings.read().await;
-        let postings: Vec<Arc<PostingBatch>> = match projection {
-            Some(v) => v.into_iter()
-                .map(|i| posting_guard[*i].clone())
-                .collect(),
-            None => posting_guard.iter()
-                .map(|i| i.clone())
-                .collect(),
-        };
+        // posting checkpoint.
+        let postings: Vec<Arc<PostingBatch>> = posting_guard.iter()
+            .map(|i| i.clone())
+            .collect();
+        let segment_num = postings.len();
         Ok(Arc::new(PostingExec::try_new(
             postings, 
-            self.term_idx.clone(),
-            self.schema(), 
-            projection.cloned(),
-            None,
+            segment_num,
             vec![],
-            self.partitions_num.load(Ordering::Relaxed),
         )?))
     }
 }
@@ -233,25 +401,20 @@ impl TableProvider for PostingTable {
 #[derive(Clone)]
 pub struct PostingExec {
     pub partitions: Vec<Arc<PostingBatch>>,
-    pub schema: SchemaRef,
-    pub term_idx: Arc<TermIdx<TermMeta>>,
     pub projected_schema: SchemaRef,
-    pub projection: Option<Vec<usize>>,
-    pub partition_min_range: Option<Arc<RoaringBitmap>>,
     pub is_score: bool,
-    pub projected_term_meta: Vec<Option<TermMeta>>,
     pub predicate: Option<BooleanEvalExpr>,
     pub partitions_num: usize,
     metric: ExecutionPlanMetricsSet,
     pub distri: Vec<Option<Arc<RoaringBitmap>>>,
     pub idx: Vec<Option<u32>>,
+    pub projected_terms: Arc<Vec<String>>,
 }
 
 impl std::fmt::Debug for PostingExec {
    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
        write!(f, "partitions: [...]")?;
-       write!(f, "schema: {:?}", self.projected_schema)?;
-       write!(f, "projection: {:?}", self.projection)?;
+       write!(f, "schema: {:?}", self.projected_terms)?;
        write!(f, "is_score: {:}", self.is_score)
    } 
 }
@@ -264,7 +427,7 @@ impl ExecutionPlan for PostingExec {
 
     /// Get the schema for this execution plan
     fn schema(&self) -> SchemaRef {
-        self.projected_schema.clone()
+        Arc::new(Schema::empty())
     }
 
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
@@ -274,7 +437,7 @@ impl ExecutionPlan for PostingExec {
 
     /// Get the output partitioning of this plan
     fn output_partitioning(&self) -> datafusion::physical_plan::Partitioning {
-        Partitioning::UnknownPartitioning(self.partitions_num)
+        Partitioning::UnknownPartitioning(self.partitions.len())
     }
 
     fn output_ordering(&self) -> Option<&[datafusion::physical_expr::PhysicalSortExpr]> {
@@ -295,27 +458,53 @@ impl ExecutionPlan for PostingExec {
             partition: usize,
             context: Arc<datafusion::execution::context::TaskContext>,
         ) -> Result<datafusion::physical_plan::SendableRecordBatchStream> {
-        // let default_step_len = *STEP_LEN.lock();
-        // const default_step_len: usize = 1024;
+        let postings = self.partitions[partition].clone();
+        // Pruning to get the min range
+        let term_stats: Vec<Option<&TermMeta>> = postings.term_metas_of(&self.projected_terms);
+        let invalid = Arc::new(RoaringBitmap::new());
+        let prune_bitmap: Vec<Arc<RoaringBitmap>> = term_stats.iter()
+            .map(|t| {
+                match t {
+                    Some(t) => t.valid_bitmap().clone(),
+                    None => invalid.clone(),
+                }
+            })
+            .collect();
+        let skip_bitmap = match self.predicate.as_ref()
+            .unwrap()
+            .as_any()
+            .downcast_ref::<BooleanEvalExpr>() {
+            Some(p) => {
+                p.eval_bitmap(&prune_bitmap).unwrap()
+            }
+            None => unreachable!("Must have valid predicate.")
+        };
 
-        let task_len = self.partition_min_range.as_ref().unwrap().len() as usize;
-        // let batch_len = if self.partitions_num * default_step_len > task_len {
-            
-        // } else {
-        //     task_len / self.partitions_num
-        // };
-        let batch_len = task_len / self.partitions_num;
+        let (distri, index): (Vec<Option<Arc<RoaringBitmap>>>, Vec<Option<u32>>) = 
+            term_stats.into_iter()
+            .map(|t| {
+                match t {
+                    Some(t) => (Some(t.valid_bitmap().clone()), Some(t.index)),
+                    None => (None, None),
+                }
+            })
+            // .unzip::<Vec<Option<RoaringBitmap>>, Vec<Option<u32>>>();
+            .unzip();
+        
+        let task_len = skip_bitmap.len() as usize;
+        // let batch_len = task_len / self.partitions_num;
         debug!("Start PostingExec::execute for partition {} of context session_id {} and task_id {:?}", partition, context.session_id(), context.task_id());
         
         Ok(Box::pin(PostingStream::try_new(
-            self.partitions[0].clone(),
+            postings,
             self.projected_schema.clone(),
-            self.partition_min_range.as_ref().unwrap().clone(),
-            self.distri.clone(),
-            self.idx.clone(),
+            skip_bitmap,
+            distri,
+            index,
             self.predicate.clone(),
             self.is_score,
-            (batch_len * partition)..(batch_len * partition + batch_len),
+            // (batch_len * partition)..(batch_len * partition + batch_len),
+            0..task_len
         )?))
     }
 
@@ -350,65 +539,31 @@ impl PostingExec {
     /// The provided `schema` shuold not have the projection applied.
     pub fn try_new(
         partitions: Vec<Arc<PostingBatch>>,
-        term_idx: Arc<TermIdx<TermMeta>>,
-        schema: SchemaRef,
-        projection: Option<Vec<usize>>,
-        partition_min_range: Option<Arc<RoaringBitmap>>,
-        projected_term_meta: Vec<Option<TermMeta>>,
         partitions_num: usize,
+        projected_terms: Vec<String>,
     ) -> Result<Self> {
-        let projected_schema = project_schema(&schema, projection.as_ref())?;
+        // let projected_schema = project_schema(&schema, projection.as_ref())?;
         // let (distris, indices ) = projected_term_meta.iter()
         //     .map(| v| match v {
         //         Some(v) => (Some(v.valid_bitmap[0].clone()), v.index[0].clone() ),
         //         None => (None, None),
         //     })
         //     .unzip();
+        let fields: Vec<Field> = projected_terms.iter()
+            .map(|f| Field::new(f.clone(), DataType::Date64, false))
+            .collect();
+        let projected_schema = Arc::new(Schema::new(fields));
         Ok(Self {
             partitions: partitions,
-            term_idx,
-            schema,
             projected_schema,
-            projection,
-            partition_min_range,
             is_score: false,
-            projected_term_meta,
             predicate: None,
             partitions_num,
             metric: ExecutionPlanMetricsSet::new(),
             distri: vec![],
             idx: vec![],
+            projected_terms: Arc::new(projected_terms),
         })
-    }
-}
-
-impl ExecutorWithMetadata for PostingExec {
-    /// Get TermMeta From &[&str]
-    fn term_metas_of(&self, terms: &[&str]) -> Vec<Option<TermMeta>> {
-        let term_idx = self.term_idx.clone();
-        terms
-            .into_iter()
-            .map(|&t| {
-                #[cfg(feature="trie_idx")]
-                let meta = term_idx.get(t);
-                #[cfg(feature="hash_idx")]
-                let meta = term_idx.get(t).cloned();
-                meta
-            })
-            .collect()
-    }
-
-    /// Get TermMeta From &str
-    fn term_meta_of(&self, term: &str) -> Option<TermMeta> {
-        #[cfg(not(feature="hash_idx"))]
-        let meta = self.term_idx.get(term);
-        #[cfg(feature="hash_idx")]
-        let meta = self.term_idx.get(term).cloned();
-        meta
-    }
-    
-    fn set_term_meta(&mut self, term_meta: Vec<Option<TermMeta>>) {
-        self.projected_term_meta = term_meta;
     }
 }
 
@@ -416,7 +571,7 @@ pub struct PostingStream {
     /// Vector of recorcd batches
     posting_lists:  Arc<PostingBatch>,
     /// Schema representing the data
-    schema: SchemaRef,
+    projected_schema: SchemaRef,
     /// is_score
     is_score: bool,
     /// min_range
@@ -441,7 +596,7 @@ impl PostingStream {
     /// Create an iterator for a vector of record batches
     pub fn try_new(
         data: Arc<PostingBatch>,
-        schema: SchemaRef,
+        projected_schema: SchemaRef,
         min_range: Arc<RoaringBitmap>,
         distris: Vec<Option<Arc<RoaringBitmap>>>,
         indices: Vec<Option<u32>>,
@@ -456,7 +611,7 @@ impl PostingStream {
             .collect();
         Ok(Self {
             posting_lists: data,
-            schema,
+            projected_schema,
             min_range,
             distris,
             is_score,
@@ -483,9 +638,9 @@ impl Stream for PostingStream {
             let mut cnt = 0;
             while self.index < end {
                 let res = if self.index + self.step_length >= end {
-                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.schema, &self.indices,  &self.min_range[self.index..end], &self.predicate.as_ref().unwrap())
+                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.projected_schema, &self.indices,  &self.min_range[self.index..end], &self.predicate.as_ref().unwrap())
                 } else {
-                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.schema, &self.indices,  &self.min_range[self.index..(self.index + self.step_length)], &self.predicate.as_ref().unwrap())
+                    self.posting_lists.roaring_predicate_with_score(&self.distris, &self.projected_schema, &self.indices,  &self.min_range[self.index..(self.index + self.step_length)], &self.predicate.as_ref().unwrap())
                 };
                 self.index += self.step_length;
                 cnt += res.unwrap();
@@ -522,7 +677,7 @@ impl Stream for PostingStream {
 impl RecordBatchStream for PostingStream {
     /// Get the schema
     fn schema(&self) -> SchemaRef {
-        self.schema.clone()
+        self.projected_schema.clone()
     }
 }
 

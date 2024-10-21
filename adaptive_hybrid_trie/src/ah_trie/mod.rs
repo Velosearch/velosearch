@@ -1,5 +1,4 @@
 mod ah_trie;
-use std::cmp::min;
 
 use art_tree::{Art, ByteString};
 use fst_rs::FST;
