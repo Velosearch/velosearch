@@ -223,26 +223,27 @@ impl LogicalPlanBuilder {
 
         let schema = table_source.schema();
 
-        let projected_schema = projection
-            .as_ref()
-            .map(|p| {
-                DFSchema::new_with_metadata(
-                    p.iter()
-                        .enumerate()
-                        .map(|(n, i)| {
-                            if *i == usize::MAX {
-                                DFField::from_qualified(&table_name, Field::new(String::from(format!("__NULL__{:}", n)), DataType::Boolean, false))
-                            } else {
-                                DFField::from_qualified(&table_name, schema.field(*i).clone())
-                            }
-                        })
-                        .collect(),
-                    schema.metadata().clone(),
-                )
-            })
-            .unwrap_or_else(|| {
-                DFSchema::try_from_qualified_schema(&table_name, &schema)
-            })?;
+        // let projected_schema = projection
+        //     .as_ref()
+        //     .map(|p| {
+        //         DFSchema::new_with_metadata(
+        //             p.iter()
+        //                 .enumerate()
+        //                 .map(|(n, i)| {
+        //                     if *i == usize::MAX {
+        //                         DFField::from_qualified(&table_name, Field::new(String::from(format!("__NULL__{:}", n)), DataType::Boolean, false))
+        //                     } else {
+        //                         DFField::from_qualified(&table_name, schema.field(*i).clone())
+        //                     }
+        //                 })
+        //                 .collect(),
+        //             schema.metadata().clone(),
+        //         )
+        //     })
+        //     .unwrap_or_else(|| {
+        //         DFSchema::try_from_qualified_schema(&table_name, &schema)
+        //     })?;
+        let projected_schema = DFSchema::empty();
 
         let table_scan = LogicalPlan::TableScan(TableScan {
             table_name,

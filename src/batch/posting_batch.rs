@@ -1,9 +1,10 @@
-use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, collections::{BTreeMap, BTreeSet}, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::{Arc, RwLock}};
+use std::{arch::x86_64::{_mm512_popcnt_epi64, _mm512_reduce_add_epi64}, collections::{BTreeMap, BTreeSet}, mem::size_of_val, ops::Index, ptr::NonNull, slice::from_raw_parts, sync::Arc};
 
 use adaptive_hybrid_trie::TermIdx;
-use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch, bitmap::Bitmap}, common::TermMeta, from_slice::FromSlice};
+use datafusion::{arrow::{array::{Array, ArrayData, ArrayRef, BooleanArray, GenericBinaryArray, GenericBinaryBuilder, GenericListArray, Int64RunArray, PrimitiveRunBuilder, UInt16Array, UInt32Array}, buffer::Buffer, datatypes::{DataType, Field, Int64Type, Schema, SchemaRef, ToByteSlice, UInt8Type}, record_batch::RecordBatch}, common::TermMeta, from_slice::FromSlice};
 use roaring::RoaringBitmap;
 use serde::{Serialize, Deserialize};
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 use crate::{datasources::mmap_table::{PostingColumn, PostingSegment}, physical_expr::{boolean_eval::{freqs_filter, Chunk, TempChunk}, BooleanEvalExpr}, utils::{avx512::U64x8, FastErr}};
 use crate::utils::Result;
@@ -26,6 +27,11 @@ impl BatchRange {
             end,
             nums32: (end - start + 31) / 32
         }
+    }
+
+    /// get the `start` of BatchRange
+    pub fn start(&self) -> u32 {
+        self.start
     }
     
     /// get the `end` of BatchRange
@@ -53,7 +59,7 @@ pub struct PostingBatch {
     term_freqs: Option<BatchFreqs>,
     range: Arc<BatchRange>,
     // tombstone bitmap for deletion operations
-    valid: Option<Arc<RwLock<Bitmap>>>,
+    valid: Arc<RwLock<RoaringBitmap>>,
     pub term_idx: Arc<TermIdx<TermMeta>>,
 }
 
@@ -64,6 +70,10 @@ impl PostingBatch {
             metas.push(self.term_idx.get(term));
         }
         metas
+    }
+
+    pub async fn delete(&self, position: u32) {
+        self.valid.write().await.insert(position);
     }
 
     pub fn memory_consumption(&self) -> (usize, usize, usize) {
@@ -121,7 +131,7 @@ impl PostingBatch {
             term_idx,
             term_freqs,
             range,
-            valid: None,
+            valid: Arc::new(RwLock::new(RoaringBitmap::new())),
         })  
     }
 
@@ -151,10 +161,7 @@ impl PostingBatch {
         };
         let mut batches: Vec<Option<Vec<Chunk>>> = Vec::with_capacity(distris.len());
         // let _valid = self.valid.read().unwrap().clone();
-        let _valid: Option<Bitmap> = match self.valid.as_ref() {
-            Some(b) => Some(b.read().unwrap().clone()),
-            None => None,
-        };
+        // let _valid: u64 = self.valid.read().await.len();
         debug!("Start select valid batch.");
         for (term, i) in distris.iter().zip(indices.iter()) {
             let mut posting = Vec::with_capacity(min_range.len());
@@ -167,9 +174,9 @@ impl PostingBatch {
             };
             let term = term.as_ref().unwrap();
             let mut rank_iter = term.rank_iter();
-            // debug!("min_range: {:?}", min_range);
+            debug!("min_range: {:?}", min_range);
             for &idx in min_range {
-                if term.contains(idx) {
+                // if term.contains(idx) {
                     let bound_idx: usize = rank_iter.rank(idx);
                     // debug!("bound_idx: {:}, real: {:}, idx: {:}, i: {:}", bound_idx, term.rank(idx), idx, i.unwrap());
                     let batch = batch.value(bound_idx - 1);
@@ -184,9 +191,9 @@ impl PostingBatch {
                         };
                         posting.push(Chunk::IDs(batch));
                     }
-                } else {
-                    posting.push(Chunk::N0NE);
-                }
+                // } else {
+                //     posting.push(Chunk::N0NE);
+                // }
             }
             if posting.len() > 0 {
                 batches.push(Some(posting));
@@ -555,7 +562,7 @@ impl PostingBatchBuilder {
                         let skip_num = (p - cnter) / 512;
                         cnter += skip_num * 512;
                         batch_num += 1;
-                        if buffer.len() > 32 {
+                        if buffer.len() > 8 {
                             bitmap_num += 1;
                             let mut bitmap: Vec<u64> = vec![0; 8];
                             for i in &buffer {

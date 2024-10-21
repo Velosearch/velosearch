@@ -30,6 +30,7 @@ impl LabelVector {
         }
     }
 
+    #[allow(unused)]
     pub fn num_bytes(&self) -> usize {
         self.num_bytes
     }

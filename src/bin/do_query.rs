@@ -9,7 +9,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 #[tokio::main]
 async fn main() {
-    // tracing_subscriber::fmt().with_max_level(tracing::Level::INFO).init();
+    tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();
     let args: Vec<String> = env::args().collect();
     let partition_num = match args.get(2) {
         Some(p) => p.parse().unwrap(),

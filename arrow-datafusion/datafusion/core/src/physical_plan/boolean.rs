@@ -18,7 +18,7 @@
 //! BooleanExec evaluates a boolean_query predicate against all input batches to determine
 //! which rows to include in its output batches
 
-use std::{sync::Arc, pin::Pin, task::{Poll, Context}, collections::HashMap, arch::x86_64::{__m512i, _mm512_mask_compressstoreu_epi32, _mm512_loadu_epi8, _mm512_mask_compressstoreu_epi8, _pext_u64}};
+use std::{sync::Arc, pin::Pin, task::{Poll, Context}, arch::x86_64::{__m512i, _mm512_mask_compressstoreu_epi32, _mm512_loadu_epi8, _mm512_mask_compressstoreu_epi8, _pext_u64}};
 
 use crate::error::Result;
 use arrow::{record_batch::RecordBatch, datatypes::{SchemaRef, DataType, Field, Schema}, array::{BooleanArray, UInt32Array, ArrayRef, Array, as_list_array, UInt8Array, UInt64Array}, error::ArrowError};

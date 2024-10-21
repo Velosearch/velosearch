@@ -284,6 +284,21 @@ impl PostingTable {
         self.update_queue.add_docs(docs, self.doc_id.fetch_add(512, Ordering::Relaxed)).await;
     }
 
+    /// Delete documents
+    pub async fn delete_document(&self, doc_id: u32) {
+        let guard = self.postings.write().await;
+        let batch = guard.iter().find_map(|s| {
+            if doc_id >= s.range().start() && doc_id < s.range().end() {
+                Some(s)
+            } else {
+                None
+            }
+        });
+        if let Some(batch) = batch {
+            batch.delete(doc_id  - batch.range().start());
+        }
+    }
+
     /// Commit the modifications in update queue.
     /// 1. flush the update queue.
     /// 2. merge the segments according to merge policy.

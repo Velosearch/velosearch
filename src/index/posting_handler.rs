@@ -23,12 +23,12 @@ impl PostingHandler {
                 };
             }
         };
-        let items: Vec<WikiItem> = path
+        let mut items: Vec<WikiItem> = path
             .into_iter()
             .map(|p| parse_wiki_dir(&(base.clone() + &p)).unwrap())
             .flatten()
             .collect();
-
+        let items = items.drain(0..200000).collect::<Vec<_>>();
         let doc_len = items.len();
         let posting_table = to_batch(items, doc_len, partition_nums, batch_size, dump_path);
     
@@ -123,11 +123,11 @@ fn to_batch(docs: Vec<WikiItem>, length: usize, _partition_nums: usize, batch_si
     let mut current: (usize, usize) = (0, 0);
     let mut thredhold = batch_size;
 
-    let tokenizer = TextAnalyzer::from(SimpleTokenizer);
+    let mut tokenizer = TextAnalyzer::from(SimpleTokenizer::default());
     docs.into_iter()
     .enumerate()
     .for_each(|(id, e)| {
-        let mut stream = tokenizer.token_stream(&e.content);
+        let mut stream = tokenizer.token_stream(&e.text);
             stream.process(&mut |token| {
                 let word = token.text.clone();
                 let entry = term_idx.entry(word.clone()).or_insert(TermMetaBuilder::new(num_512_partition as usize, partition_nums as usize));
